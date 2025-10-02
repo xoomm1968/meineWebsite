@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="de" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiver Bericht: Die Welt von NAD+ (Offline Version)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 700px; margin-left: auto; margin-right: auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .tab-active { border-color: #2563eb; color: #2563eb; background-color: #eff6ff; }
+        .tab-inactive { border-color: transparent; color: #4b5563; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 32px; height: 32px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: #e5e7eb; border-radius: 9999px; outline: none; opacity: 0.7; transition: opacity .2s; }
+        input[type=range]:hover { opacity: 1; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: #2563eb; cursor: pointer; border-radius: 50%; transition: background .2s; }
+        input[type=range]:active::-webkit-slider-thumb { background: #1d4ed8; }
+        input[type=range]::-moz-range-thumb { width: 20px; height: 20px; background: #2563eb; cursor: pointer; border-radius: 50%; border: none; transition: background .2s; }
+        input[type=range]:active::-moz-range-thumb { background: #1d4ed8; }
+    </style>
+</head>
+<body class="bg-stone-50 text-slate-800">
+
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <span class="text-xl font-bold text-blue-600">NAD+ Explorer</span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#was-ist-nad" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">Was ist NAD+?</a>
+                        <a href="#superkraefte" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">Die Superkräfte</a>
+                        <a href="#problem" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">Das Problem</a>
+                        <a href="#loesung" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">Die Lösung</a>
+                        <a href="#aktionsplan" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200">✨Aktionsplan</a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-100 focus:outline-none transition-colors duration-200">
+                        <span class="sr-only">Menü öffnen</span>
+                        <svg class="h-6 w-6 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="mobile-menu" class="md:hidden hidden">
+                <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                    <a href="#was-ist-nad" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">Was ist NAD+?</a>
+                    <a href="#superkraefte" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">Die Superkräfte</a>
+                    <a href="#problem" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">Das Problem</a>
+                    <a href="#loesung" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">Die Lösung</a>
+                    <a href="#aktionsplan" class="text-gray-600 hover:text-blue-600 hover:bg-blue-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">✨Aktionsplan</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+                <h1 class="text-4xl md:text-6xl font-bold text-slate-900 leading-tight">
+                    Der <span class="text-blue-600">Zündfunke</span> des Lebens
+                </h1>
+                <p class="mt-4 text-lg md:text-xl text-slate-600 max-w-3xl mx-auto">
+                    Entdecken Sie NAD+, das entscheidende Molekül, das unsere Energie, Zellreparatur und Langlebigkeit steuert. Diese interaktive Übersicht erklärt, was es ist, warum es mit dem Alter abnimmt und was Sie tun können.
+                </p>
+
+                <div class="mt-10 max-w-md mx-auto bg-slate-50 p-4 rounded-lg shadow-inner">
+                    <p class="text-sm font-medium text-slate-700 mb-2">Höre dir die Zusammenfassung an:</p>
+                    <audio controls class="w-full">
+                        <source src="nad_audio.m4a" type="audio/mp4">
+                        <source src="nad_audio.mp3" type="audio/mpeg">
+                        Dein Browser unterstützt das Audio-Element nicht.
+                    </audio>
+                    <p class="text-xs text-slate-500 mt-2">Hinweis: Bitte benenne deine Audiodatei `nad_audio.m4a` (von Sprachmemos) oder `nad_audio.mp3`.</p>
+                </div>
+
+                <a href="#was-ist-nad" class="mt-8 inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 active:scale-95 transform transition-all duration-150 ease-in-out">
+                    Jetzt Erkunden
+                </a>
+            </div>
+        </section>
+
+        <section id="was-ist-nad" class="py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Was ist NAD+?</h2>
+                    <p class="mt-2 text-lg text-slate-600 max-w-2xl mx-auto">NAD+ ist wie eine wiederaufladbare Batterie für Ihre Zellen – ein unverzichtbarer Helfer für über 500 Reaktionen.</p>
+                </div>
+                <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+                     <p class="text-slate-700 mb-6">
+                        Stellen Sie sich NAD+ als einen entscheidenden Helfer in jeder Zelle vor. Es ist ein Coenzym, der unverzichtbare Assistent, ohne den die eigentlichen Arbeiter – die Enzyme – ihre Arbeit nicht machen können. Es ist wie der Zündschlüssel für den Motor unseres Körpers. Im Grunde ist es ein Energietransporter, der ständig zwischen einem leeren und einem geladenen Zustand wechselt.
+                    </p>
+                    <div class="grid md:grid-cols-2 gap-8 items-center">
+                        <div class="text-center p-6 bg-slate-100 rounded-lg">
+                            <h3 class="text-2xl font-bold mb-2">Leere Batterie: NAD+</h3>
+                            <p class="text-slate-600">In diesem Zustand ist das Molekül bereit, Energie aus der Nahrung aufzunehmen und sich "aufzuladen".</p>
+                        </div>
+                        <div class="text-center p-6 bg-blue-100 rounded-lg">
+                            <h3 class="text-2xl font-bold text-blue-800 mb-2">Volle Batterie: NADH</h3>
+                            <p class="text-blue-700">Nachdem es Energie aufgenommen hat, wird es zu NADH. In diesem Zustand transportiert es die Energie dorthin, wo sie für zelluläre Prozesse benötigt wird.</p>
+                        </div>
+                    </div>
+                     <p class="text-center text-slate-500 mt-6 text-sm">Dieser ständige Lade- und Entladezyklus ist das Herzstück unseres gesamten Stoffwechsels.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="superkraefte" class="py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Die drei Superkräfte von NAD+</h2>
+                    <p class="mt-2 text-lg text-slate-600">NAD+ ist an fundamentalen Prozessen beteiligt, die unsere Gesundheit bestimmen.</p>
+                </div>
+                <div class="max-w-4xl mx-auto">
+                    <div class="border-b border-gray-200">
+                        <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                            <button id="tab-energie" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-lg hover:bg-blue-50 transition-colors duration-200">
+                                ⚡ Energieproduktion
+                            </button>
+                            <button id="tab-reparatur" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-lg hover:bg-blue-50 transition-colors duration-200">
+                               🧬 DNA-Reparatur
+                            </button>
+                            <button id="tab-sirtuine" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-lg hover:bg-blue-50 transition-colors duration-200">
+                               🛡️ Sirtuin-Aktivierung
+                            </button>
+                        </nav>
+                    </div>
+                    <div class="mt-8">
+                        <div id="content-energie" class="tab-content">
+                            <h3 class="text-2xl font-bold mb-4">Energie für jede Zelle</h3>
+                            <p class="text-slate-700">Alles, was wir essen, muss in die universelle Energiewährung der Zelle, ATP, umgewandelt werden. Dieser Prozess findet in den Mitochondrien, unseren Zellkraftwerken, statt. NAD+ ist dort der entscheidende Akteur, der die Energie aus der Nahrung zur Produktionsstätte transportiert. Wenig NAD+ bedeutet, die Kraftwerke laufen nur auf Sparflamme – die Folge ist Müdigkeit und eine nachlassende Funktion von Gehirn, Herz und Muskeln.</p>
+                        </div>
+                        <div id="content-reparatur" class="tab-content hidden">
+                            <h3 class="text-2xl font-bold mb-4">Das Reparatur-Team des Körpers</h3>
+                            <p class="text-slate-700">Unser Erbgut, die DNA, wird täglich tausendfach beschädigt. Ein 24/7-Reparatur-Team, die sogenannten PARP-Enzyme, flickt diese Schäden. Der Treibstoff für diese Schwerstarbeit ist NAD+. Bei niedrigem NAD+-Spiegel kann die Reparatur nicht mehr effizient stattfinden, Schäden häufen sich an, und der Alterungsprozess beschleunigt sich.</p>
+                        </div>
+                        <div id="content-sirtuine" class="tab-content hidden">
+                            <h3 class="text-2xl font-bold mb-4">Die Wächter der Langlebigkeit</h3>
+                            <p class="text-slate-700">Sirtuine, auch "Langlebigkeits-Gene" genannt, sind Proteine, die unsere Zellen schützen. Sie reduzieren Entzündungen, optimieren den Stoffwechsel und verbessern die Stressresistenz. Diese Wächter sind jedoch oft im Schlafmodus. NAD+ ist ihr Weckruf. Nur wenn genug NAD+ vorhanden ist, werden sie aktiv und können ihre schützende Arbeit verrichten.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="problem" class="py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Das Problem: Der altersbedingte Abfall</h2>
+                    <p class="mt-2 text-lg text-slate-600 max-w-2xl mx-auto">Der Haken ist: Unsere NAD+-Spiegel sinken mit zunehmendem Alter drastisch. Dies ist einer der Hauptgründe für viele typische Alterserscheinungen.</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-12 items-center">
+                    <div class="bg-white p-8 rounded-xl shadow-lg">
+                        <h3 class="text-xl font-bold mb-4">Warum sinkt der Spiegel?</h3>
+                         <p class="text-slate-700 mb-6">Es ist eine Doppelbelastung: Einerseits lässt die körpereigene Produktion im Alter nach. Andererseits steigt der Verbrauch dramatisch an, unter anderem durch ein Enzym namens CD38, das im Alter aktiver wird und wie ein Leck im NAD+-Tank wirkt.</p>
+                         <ul class="space-y-3">
+                            <li class="flex items-start">
+                                <span class="text-blue-500 mr-3 mt-1">✓</span>
+                                <span><strong class="font-semibold">Geringere Produktion:</strong> Der Körper stellt im Alter weniger NAD+ her.</span>
+                            </li>
+                             <li class="flex items-start">
+                                <span class="text-blue-500 mr-3 mt-1">✓</span>
+                                <span><strong class="font-semibold">Höherer Verbrauch:</strong> Chronische Entzündungen und DNA-Reparaturen verbrauchen permanent NAD+.</span>
+                            </li>
+                             <li class="flex items-start">
+                                <span class="text-blue-500 mr-3 mt-1">✓</span>
+                                <span><strong class="font-semibold">Folgen:</strong> Müdigkeit, nachlassende geistige Fitness und Stoffwechselprobleme sind oft die Konsequenz.</span>
+                            </li>
+                         </ul>
+                    </div>
+                    <div>
+                        <div class="chart-container">
+                            <canvas id="nadLevelChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="loesung" class="py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Die Lösung: Tanks wieder auffüllen</h2>
+                    <p class="mt-2 text-lg text-slate-600">Glücklicherweise sind wir dem Prozess nicht hilflos ausgeliefert. Die Forschung zeigt Wege auf, die NAD+-Spiegel aktiv zu unterstützen.</p>
+                </div>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <div class="bg-stone-100 p-8 rounded-xl">
+                        <h3 class="text-xl font-bold mb-3">1. Lebensstil</h3>
+                        <p class="text-slate-700">Sport, insbesondere hochintensives Intervalltraining (HIIT), und Fastenphasen können die zellulären Schutzprogramme hochfahren und die NAD+-Produktion ankurbeln.</p>
+                    </div>
+                    <div class="bg-stone-100 p-8 rounded-xl">
+                        <h3 class="text-xl font-bold mb-3">2. Ernährung</h3>
+                        <p class="text-slate-700">Der Körper braucht Bausteine wie Vitamin B3. Diese finden sich in Fisch, Huhn, Truthahn, Pilzen, Avocados, grünen Erbsen und Vollkornprodukten.</p>
+                    </div>
+                     <div class="bg-stone-100 p-8 rounded-xl">
+                        <h3 class="text-xl font-bold mb-3">3. Nahrungsergänzung</h3>
+                        <p class="text-slate-700">NAD+-Vorstufen wie Nicotinamid-Ribosid (NR) oder Nicotinamid-Mononukleotid (NMN) können vom Körper direkt in NAD+ umgewandelt werden und so die Spiegel effektiv erhöhen.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="aktionsplan" class="py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Ihr persönlicher Aktionsplan ✨</h2>
+                    <p class="mt-2 text-lg text-slate-600 max-w-2xl mx-auto">Erhalten Sie personalisierte Vorschläge zur Unterstützung Ihres NAD+-Spiegels basierend auf Ihrem Alter.</p>
+                </div>
+                <div class="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+                    <div class="mb-6">
+                        <label for="age-slider" class="block text-lg font-medium text-slate-700">Ihr Alter: <span id="age-value" class="font-bold text-blue-600">40</span></label>
+                        <input id="age-slider" type="range" min="20" max="80" value="40" class="w-full">
+                    </div>
+                    <button id="generate-plan-button" class="w-full bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 active:scale-[0.98] transform transition-all duration-150 ease-in-out flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                        Plan generieren
+                    </button>
+                    <div id="plan-result" class="mt-8 prose max-w-none prose-blue"></div>
+                    <div id="plan-loader" class="hidden mx-auto mt-8 loader"></div>
+                     <p class="text-xs text-slate-500 mt-4 text-center">Haftungsausschluss: Dies ist keine medizinische Beratung. Konsultieren Sie immer einen Arzt, bevor Sie Änderungen an Ihrem Lebensstil oder Ihrer Ernährung vornehmen.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="mythen" class="py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-slate-900">Mythen & Fakten Check ✨</h2>
+                    <p class="mt-2 text-lg text-slate-600 max-w-2xl mx-auto">Was stimmt wirklich? Lassen Sie uns gängige Mythen über NAD+ aufdecken.</p>
+                </div>
+                <div class="max-w-3xl mx-auto text-center">
+                     <button id="generate-myth-button" class="bg-slate-700 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-800 active:scale-[0.98] transform transition-all duration-150 ease-in-out flex items-center justify-center mx-auto disabled:opacity-50 disabled:cursor-not-allowed">
+                        Neuen Mythos aufdecken
+                    </button>
+                    <div id="myth-result" class="mt-8 text-left prose max-w-none prose-slate bg-stone-100 p-6 rounded-lg min-h-[100px]"></div>
+                    <div id="myth-loader" class="hidden mx-auto mt-8 loader"></div>
+                </div>
+            </div>
+        </section>
+
+
+        <section class="bg-blue-600 text-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+                <h2 class="text-3xl font-bold">Fazit: Es geht um die Gesundheitsspanne</h2>
+                <p class="mt-4 text-lg text-blue-100 max-w-3xl mx-auto">
+                    NAD+ ist keine "Pille für die ewige Jugend". Ein gesunder Lebensstil bleibt die Basis. Aber die Möglichkeit, unsere NAD+-Spiegel gezielt zu unterstützen, ist eine der aufregendsten Entwicklungen in der Gesundheitsforschung. Das Ziel ist nicht nur die Verlängerung der Lebensspanne, sondern vor allem der Gesundheitsspanne – die Jahre, die wir fit, energiegeladen und frei von chronischen Krankheiten sind.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-slate-800 text-slate-400 py-6">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm">
+            <p>&copy; 2025 NAD+ Explorer. Dieser Bericht dient nur zu Informationszwecken.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Mobile Menu Logic
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+
+            const allMenuLinks = document.querySelectorAll('header nav a');
+            allMenuLinks.forEach(link => {
+                link.addEventListener('click', () => {
+                    if(!mobileMenu.classList.contains('hidden')){
+                         mobileMenu.classList.add('hidden');
+                    }
+                });
+            });
+
+            // Tabs Logic
+            const tabs = document.querySelectorAll('.tab-btn');
+            const contents = document.querySelectorAll('.tab-content');
+
+            const setActiveTab = (tabId) => {
+                tabs.forEach(tab => {
+                    if (tab.id === tabId) {
+                        tab.classList.remove('tab-inactive');
+                        tab.classList.add('tab-active');
+                    } else {
+                        tab.classList.remove('tab-active');
+                        tab.classList.add('tab-inactive');
+                    }
+                });
+
+                contents.forEach(content => {
+                    if (content.id === `content-${tabId.split('-')[1]}`) {
+                        content.classList.remove('hidden');
+                    } else {
+                        content.classList.add('hidden');
+                    }
+                });
+            };
+
+            setActiveTab('tab-energie');
+            tabs.forEach(tab => tab.addEventListener('click', () => setActiveTab(tab.id)));
+
+            // Chart.js Logic
+            const ctx = document.getElementById('nadLevelChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['20', '30', '40', '50', '60', '70', '80'],
+                    datasets: [{
+                        label: 'Relativer NAD+-Spiegel (%)',
+                        data: [100, 85, 65, 50, 35, 25, 15],
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        borderColor: 'rgba(37, 99, 235, 1)',
+                        borderWidth: 3,
+                        pointBackgroundColor: 'rgba(37, 99, 235, 1)',
+                        pointRadius: 5,
+                        tension: 0.4,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, max: 110, title: { display: true, text: 'NAD+ Spiegel (%)' }}, x: { title: { display: true, text: 'Alter in Jahren' }}},
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => ` Im Alter von ${context.label} Jahren beträgt der Spiegel ca. ${context.raw}%` }}}
+                }
+            });
+
+            // --- OFFLINE SIMULATION SCRIPT ---
+
+            // Personalized Action Plan Simulation
+            const ageSlider = document.getElementById('age-slider');
+            const ageValue = document.getElementById('age-value');
+            const generatePlanButton = document.getElementById('generate-plan-button');
+            const planResult = document.getElementById('plan-result');
+            const planLoader = document.getElementById('plan-loader');
+
+            ageSlider.addEventListener('input', () => {
+                ageValue.textContent = ageSlider.value;
+            });
+
+            generatePlanButton.addEventListener('click', () => {
+                const age = parseInt(ageSlider.value, 10);
+                let planText = '';
+
+                if (age <= 35) {
+                    planText = "<strong>In Ihren Zwanzigern und Dreißigern legen Sie das Fundament!</strong><br><br>Ihr NAD+-Spiegel ist noch relativ hoch. Jetzt ist die perfekte Zeit, um gute Gewohnheiten zu etablieren.<br><br>1. **Fokus auf Bewegung:** Integrieren Sie regelmäßiges Training, idealerweise mit kurzen, intensiven Einheiten (HIIT), um Ihre Mitochondrien zu stärken.<br>2. **Saubere Ernährung:** Konzentrieren Sie sich auf eine vollwertige Ernährung mit viel Gemüse und NAD+-Bausteinen wie Huhn, Fisch und Pilzen.<br>3. **Sonnenschutz:** Schützen Sie Ihre Haut vor UV-Strahlung, um unnötigen NAD+-Verbrauch für DNA-Reparaturen zu vermeiden.";
+                } else if (age <= 55) {
+                    planText = "<strong>In Ihren Vierzigern und Fünfzigern ist Konsistenz der Schlüssel.</strong><br><br>Jetzt macht sich die Unterstützung Ihres NAD+-Spiegels besonders bemerkbar.<br><br>1. **Priorisieren Sie Schlaf:** Ausreichender und qualitativ hochwertiger Schlaf ist entscheidend für die zelluläre Regeneration und NAD+-Produktion.<br>2. **Stressmanagement:** Chronischer Stress ist ein echter NAD+-Räuber. Bauen Sie Techniken wie Meditation oder Spaziergänge in der Natur in Ihren Alltag ein.<br>3. **Erwägen Sie Intervallfasten:** Schon ein 12- oder 14-stündiges Essensfenster kann zelluläre Reinigungsprozesse (Autophagie) anstoßen, die den NAD+-Stoffwechsel entlasten.";
+                } else {
+                    planText = "<strong>Ab den Sechzigern ist aktive Unterstützung besonders wertvoll.</strong><br><br>Ihr Körper benötigt jetzt mehr Hilfe, um die NAD+-Level aufrechtzuerhalten.<br><br>1. **Krafttraining:** Konzentrieren Sie sich auf den Erhalt der Muskelmasse. Muskeln sind wichtige Stoffwechselorgane und helfen, den NAD+-Haushalt zu regulieren.<br>2. **NAD+-reiche Ernährung:** Achten Sie bewusst auf Lebensmittel, die reich an Vitamin B3 sind, wie Truthahn, Avocados und Erbsen.<br>3. **Konsultieren Sie einen Experten:** Sprechen Sie mit Ihrem Arzt über gezielte Nahrungsergänzung, um zu sehen, ob NAD+-Vorstufen wie NR oder NMN für Sie sinnvoll sein könnten.";
+                }
+
+                planResult.innerHTML = '';
+                planLoader.classList.remove('hidden');
+                generatePlanButton.disabled = true;
+
+                setTimeout(() => {
+                    planResult.innerHTML = planText;
+                    planLoader.classList.add('hidden');
+                    generatePlanButton.disabled = false;
+                }, 1000); 
+            });
+
+            // Myth vs. Fact Simulation
+            const generateMythButton = document.getElementById('generate-myth-button');
+            const mythResult = document.getElementById('myth-result');
+            const mythLoader = document.getElementById('myth-loader');
+
+            const mythsAndFacts = [
+                {
+                    myth: "NAD+ ist ein Vitamin.",
+                    fact: "Nicht ganz. NAD+ wird im Körper aus Vorstufen hergestellt, zu denen auch eine Form von Vitamin B3 (Niacin) gehört. Das NAD+-Molekül selbst ist jedoch ein Coenzym, also ein 'Helfermolekül', das viel komplexer ist als ein einfaches Vitamin."
+                },
+                {
+                    myth: "Man kann NAD+ einfach als Pille schlucken.",
+                    fact: "Das NAD+-Molekül ist zu groß und instabil, um die Verdauung zu überleben und direkt in die Zellen zu gelangen. Deshalb verwendet die Forschung Vorstufen (Precursors) wie NMN oder NR, die der Körper leicht aufnehmen und dann in NAD+ umwandeln kann."
+                },
+                {
+                    myth: "NAD+-Booster machen Sport und gesunde Ernährung überflüssig.",
+                    fact: "Absolut nicht. Ein gesunder Lebensstil ist die Grundlage. NAD+-Vorstufen können als Unterstützung dienen, aber sie können eine schlechte Ernährung oder Bewegungsmangel nicht kompensieren. Die besten Ergebnisse werden immer in Kombination erzielt."
+                },
+                {
+                    myth: "Hohe NAD+-Spiegel machen unsterblich.",
+                    fact: "Das ist reine Science-Fiction. Das Ziel der NAD+-Forschung ist nicht die Verlängerung der maximalen Lebensspanne, sondern die Verlängerung der 'Gesundheitsspanne' – also der Zeit, die wir aktiv, gesund und frei von altersbedingten Krankheiten leben."
+                }
+            ];
+
+            let lastMythIndex = -1;
+
+            const getNewMyth = () => {
+                mythResult.innerHTML = '';
+                mythLoader.classList.remove('hidden');
+                generateMythButton.disabled = true;
+
+                setTimeout(() => {
+                    let randomIndex;
+                    do {
+                        randomIndex = Math.floor(Math.random() * mythsAndFacts.length);
+                    } while (randomIndex === lastMythIndex);
+                    lastMythIndex = randomIndex;
+
+                    const selected = mythsAndFacts[randomIndex];
+                    mythResult.innerHTML = `<strong>Mythos:</strong> ${selected.myth}<br><br><strong>Fakt:</strong> ${selected.fact}`;
+                    mythLoader.classList.add('hidden');
+                    generateMythButton.disabled = false;
+                }, 800);
+            };
+
+            generateMythButton.addEventListener('click', getNewMyth);
+            getNewMyth(); // Load initial myth
+        });
+    </script>
+
+</body>
+</html>
