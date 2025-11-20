@@ -764,6 +764,15 @@
                             <div class="text-xs text-amber-700 dark:text-amber-300 font-semibold" data-i18n="credit_balance_label">Dein Guthaben</div>
                             <div class="text-lg font-bold text-amber-900 dark:text-amber-100">
                                 <span id="credit-balance">0</span> <span class="text-sm font-normal" data-i18n="credit_balance_unit">Zeichen</span>
+                                <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                    <span>Basis: <strong id="credit-basis">0</strong></span>
+                                    <span class="ml-3">Premium: <strong id="credit-premium">0</strong></span>
+                                </div>
+                                <!-- Polling status indicator -->
+                                <div class="mt-2 text-xs flex items-center gap-2" style="line-height:1">
+                                    <span id="quota-poll-indicator" title="Polling status" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#9CA3AF;box-shadow:0 0 0 3px rgba(156,163,175,0.08)"></span>
+                                    <div id="quota-poll-tooltip" class="text-xs text-gray-600 dark:text-gray-400">Polling: -- • Fehler: 0</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1035,27 +1044,27 @@
                                             <tbody class="text-emerald-600 dark:text-emerald-400">
                                                 <tr class="border-b border-emerald-100 dark:border-emerald-800">
                                                     <td class="py-1 px-2"><b>OpenAI</b></td>
-                                                    <td class="text-right py-1 px-2">$3.50</td>
-                                                    <td class="text-right py-1 px-2">$35.00</td>
-                                                    <td class="text-right py-1 px-2">$105.00</td>
+                                                    <td class="text-right py-1 px-2"><span id="price-openai-10k">$3.50</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-openai-100k">$35.00</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-openai-300k">$105.00</span></td>
                                                 </tr>
                                                 <tr class="border-b border-emerald-100 dark:border-emerald-800">
                                                     <td class="py-1 px-2"><b>Gemini</b></td>
-                                                    <td class="text-right py-1 px-2">$0.60</td>
-                                                    <td class="text-right py-1 px-2">$6.00</td>
-                                                    <td class="text-right py-1 px-2">$18.00</td>
+                                                    <td class="text-right py-1 px-2"><span id="price-gemini-10k">$0.60</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-gemini-100k">$6.00</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-gemini-300k">$18.00</span></td>
                                                 </tr>
                                                 <tr class="border-b border-emerald-100 dark:border-emerald-800">
                                                     <td class="py-1 px-2"><b>ElevenLabs</b></td>
-                                                    <td class="text-right py-1 px-2">$27.00</td>
-                                                    <td class="text-right py-1 px-2">$270.00</td>
-                                                    <td class="text-right py-1 px-2">$810.00</td>
+                                                    <td class="text-right py-1 px-2"><span id="price-elevenlabs-10k">$27.00</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-elevenlabs-100k">$270.00</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-elevenlabs-300k">$810.00</span></td>
                                                 </tr>
                                                 <tr>
                                                     <td class="py-1 px-2"><b>Polly</b></td>
-                                                    <td class="text-right py-1 px-2">$3.50</td>
-                                                    <td class="text-right py-1 px-2">$35.00</td>
-                                                    <td class="text-right py-1 px-2">$105.00</td>
+                                                    <td class="text-right py-1 px-2"><span id="price-polly-10k">$3.50</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-polly-100k">$35.00</span></td>
+                                                    <td class="text-right py-1 px-2"><span id="price-polly-300k">$105.00</span></td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1829,15 +1838,105 @@
 
         function updateCreditBalance() {
             const balanceEl = document.getElementById('credit-balance');
-            if (balanceEl) {
-                balanceEl.textContent = userCredits.toLocaleString('de-DE');
+            const basisEl = document.getElementById('credit-basis');
+            const premEl = document.getElementById('credit-premium');
+
+            // Prefer authoritative balances when available
+            let basis = 0, premium = 0, total = userCredits || 0;
+            try {
+                if (window.hhb_user_balances) {
+                    basis = Number(window.hhb_user_balances.basis || 0);
+                    premium = Number(window.hhb_user_balances.premium || 0);
+                    total = Number(window.hhb_user_balances.total || (basis + premium));
+                } else {
+                    // fallback: keep using local cached userCredits as total
+                    total = Number(userCredits || 0);
+                }
+            } catch (e) {
+                total = Number(userCredits || 0);
             }
+
+            if (balanceEl) balanceEl.textContent = Number(total).toLocaleString('de-DE');
+            if (basisEl) basisEl.textContent = Number(basis).toLocaleString('de-DE');
+            if (premEl) premEl.textContent = Number(premium).toLocaleString('de-DE');
+            try { updateQuotaStatusUI(); } catch(e) {}
+        }
+
+        // Update the visual quota polling status indicator and tooltip
+        function updateQuotaStatusUI() {
+            try {
+                const ind = document.getElementById('quota-poll-indicator');
+                const tip = document.getElementById('quota-poll-tooltip');
+                if (!ind || !tip) return;
+
+                // Determine color by failure count
+                const f = Number(_hhb_quota_failure_count || 0);
+                let color = '#10B981'; // green
+                let label = 'OK';
+                if (f === 0) { color = '#10B981'; label = 'OK'; }
+                else if (f <= 2) { color = '#F59E0B'; label = 'Warnung'; } // amber
+                else if (f <= 5) { color = '#F97316'; label = 'Fehler'; } // orange
+                else { color = '#EF4444'; label = 'Starkes Backoff'; } // red
+
+                ind.style.background = color;
+                // Set subtle shadow for visibility
+                ind.style.boxShadow = `0 0 0 6px ${hexToRgba(color, 0.08)}`;
+
+                // Format interval human-friendly
+                const ms = Number(_hhb_current_poll_interval || 0);
+                const s = ms ? Math.round(ms / 1000) : '--';
+                tip.textContent = `Polling: ${s}s • Fehler: ${f} (${label})`;
+                tip.title = `Nächstes Intervall: ${ms} ms\nFehleranzahl: ${f}`;
+                // also update debug overlay when visible
+                try { if (typeof updateDebugOverlay === 'function') updateDebugOverlay(); } catch(e) {}
+            } catch (e) { /* non-fatal */ }
+        }
+
+        // Helper: convert hex color to rgba with alpha
+        function hexToRgba(hex, alpha) {
+            try {
+                const h = hex.replace('#','');
+                const bigint = parseInt(h.length===3 ? h.split('').map(c=>c+c).join('') : h, 16);
+                const r = (bigint >> 16) & 255;
+                const g = (bigint >> 8) & 255;
+                const b = bigint & 255;
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            } catch (e) { return `rgba(156,163,175,${alpha})`; }
+        }
+
+        // Debug overlay updater: shows currentPollInterval and failureCount
+        function updateDebugOverlay() {
+            try {
+                const el = document.getElementById('quota-debug-overlay');
+                if (!el) return;
+                const ms = Number(_hhb_current_poll_interval || 0);
+                const f = Number(_hhb_quota_failure_count || 0);
+                const s = ms ? (ms/1000).toFixed(1) + 's' : '--';
+                el.innerHTML = `
+                    <div style="font-size:12px;font-family:monospace;line-height:1.1;color:#fff">\
+                        <div><strong>Poll:</strong> ${s} (${ms} ms)</div>\
+                        <div><strong>Failures:</strong> ${f}</div>\
+                    </div>
+                `;
+                // ensure visible only when debug enabled, otherwise hide
+                try {
+                    if (isDebugQuotaEnabled()) {
+                        el.style.display = 'block';
+                    } else {
+                        el.style.display = 'none';
+                    }
+                } catch (e) {
+                    el.style.display = 'none';
+                }
+            } catch (e) { /* non-fatal */ }
         }
 
         function addCredits(amount) {
             userCredits += amount;
             localStorage.setItem('userCredits', userCredits);
             updateCreditBalance();
+            // Try to refresh authoritative server balance when possible
+            try { refreshUserQuota(); } catch(e){}
         }
 
         function deductCredits(amount) {
@@ -1845,6 +1944,8 @@
                 userCredits -= amount;
                 localStorage.setItem('userCredits', userCredits);
                 updateCreditBalance();
+                // Try to refresh authoritative server balance when possible
+                try { refreshUserQuota(); } catch(e){}
                 return true;
             }
             return false;
@@ -1951,6 +2052,32 @@
             // Auto-start conversion toggle
             const autoToggle = document.getElementById('toggle-auto-start-load');
             if (autoToggle) autoToggle.checked = !!featureSettings.autoStartConversion;
+
+                // Debug toggle: reflect stored value and wire change handler (reloads page on change)
+                try {
+                    const debugToggle = document.getElementById('toggle-debug-quota');
+                    if (debugToggle) {
+                        try {
+                            debugToggle.checked = (localStorage.getItem('hhb_debug_quota') === '1');
+                        } catch (e) { debugToggle.checked = false; }
+                        debugToggle.addEventListener('change', (ev) => {
+                            try {
+                                if (ev.target.checked) {
+                                    localStorage.setItem('hhb_debug_quota', '1');
+                                } else {
+                                    localStorage.removeItem('hhb_debug_quota');
+                                }
+                            } catch (err) {}
+                            // Gentle toggle: update overlay immediately without reloading
+                            try {
+                                if (typeof updateDebugOverlay === 'function') updateDebugOverlay();
+                                const el = document.getElementById('quota-debug-overlay');
+                                if (el) el.style.display = (ev.target.checked ? 'block' : 'none');
+                                try { if (typeof updateQuotaStatusUI === 'function') updateQuotaStatusUI(); } catch(e) {}
+                            } catch (e) {}
+                        });
+                    }
+                } catch (e) { /* non-fatal */ }
         }
 
         // Save settings to LocalStorage
@@ -2000,18 +2127,141 @@
 
         // Load settings on startup
         loadSettings();
+        try { if (typeof updateDebugOverlay === 'function') updateDebugOverlay(); } catch(e) {}
 
-        // Try to fetch live balances from backend and update UI
+        // Try to fetch live balances from backend and update UI (uses auth/validate)
         (async function(){
             try {
-                const b = await fetchUserBalances();
-                if (b) {
-                    const total = (Number(b.kontingent_basis_tts || 0) + Number(b.kontingent_premium_tts || 0));
-                    userCredits = total;
-                    updateCreditBalance();
-                }
+                await refreshUserQuota();
             } catch (e) { /* ignore */ }
         })();
+
+        // --------- Quota Polling (auto-refresh when authenticated) ---------
+        let _hhb_quota_poll_timer = null;
+        const QUOTA_POLL_INTERVAL_MS = 15 * 1000; // 15 seconds (base interval)
+        // Exponential backoff state
+        let _hhb_quota_failure_count = 0;
+        let _hhb_current_poll_interval = QUOTA_POLL_INTERVAL_MS;
+        const HHB_MAX_POLL_INTERVAL_MS = 5 * 60 * 1000; // cap at 5 minutes
+
+        // Debug overlay toggle: check localStorage dynamically
+        function isDebugQuotaEnabled() { try { return localStorage.getItem('hhb_debug_quota') === '1'; } catch(e){ return false; } }
+        let _hhb_debug_overlay_timer = null;
+
+        function isUserAuthenticated() {
+            try {
+                const t = localStorage.getItem('hhb_api_token') || localStorage.getItem('apiToken') || localStorage.getItem('api_token');
+                return !!t;
+            } catch (e) { return false; }
+        }
+
+        async function fetchAndDisplayQuota() {
+            try {
+                // Only poll if authenticated
+                if (!isUserAuthenticated()) return null;
+                const res = await refreshUserQuota();
+                // success -> reset backoff
+                if (res) {
+                    _hhb_quota_failure_count = 0;
+                    if (_hhb_current_poll_interval !== QUOTA_POLL_INTERVAL_MS) {
+                        _hhb_current_poll_interval = QUOTA_POLL_INTERVAL_MS;
+                        // if a timer exists, restart so the new interval takes effect
+                        if (_hhb_quota_poll_timer) {
+                            clearTimeout(_hhb_quota_poll_timer);
+                            _hhb_quota_poll_timer = setTimeout(async function pollTick(){
+                                await fetchAndDisplayQuota().catch(()=>{});
+                                // schedule next using the (possibly-updated) interval
+                                _hhb_quota_poll_timer = setTimeout(pollTick, _hhb_current_poll_interval);
+                            }, _hhb_current_poll_interval);
+                        }
+                    }
+                    // update UI to reflect success
+                    try { updateQuotaStatusUI(); } catch (e) {}
+                } else {
+                    // treat as transient failure
+                    _hhb_quota_failure_count = Math.min(30, _hhb_quota_failure_count + 1);
+                    // exponential backoff with jitter
+                    const exp = Math.min(HHB_MAX_POLL_INTERVAL_MS, QUOTA_POLL_INTERVAL_MS * Math.pow(2, _hhb_quota_failure_count));
+                    const jitter = 1 + ((Math.random() - 0.5) * 0.2); // ±10%
+                    _hhb_current_poll_interval = Math.min(HHB_MAX_POLL_INTERVAL_MS, Math.round(exp * jitter));
+                    if (_hhb_quota_poll_timer) {
+                        clearTimeout(_hhb_quota_poll_timer);
+                        _hhb_quota_poll_timer = setTimeout(async function pollTick(){
+                            await fetchAndDisplayQuota().catch(()=>{});
+                            _hhb_quota_poll_timer = setTimeout(pollTick, _hhb_current_poll_interval);
+                        }, _hhb_current_poll_interval);
+                    }
+                    // update UI to reflect failure/backoff
+                    try { updateQuotaStatusUI(); } catch (e) {}
+                }
+                return res;
+            } catch (e) {
+                console.warn('fetchAndDisplayQuota failed', e);
+                try { _hhb_quota_failure_count = Math.min(30, _hhb_quota_failure_count + 1); } catch(e){}
+                try { updateQuotaStatusUI(); } catch (err) {}
+                return null;
+            }
+        }
+        function startQuotaPolling() {
+            try {
+                if (_hhb_quota_poll_timer) return;
+                if (!isUserAuthenticated()) return;
+
+                // reset backoff state
+                _hhb_quota_failure_count = 0;
+                _hhb_current_poll_interval = QUOTA_POLL_INTERVAL_MS;
+
+                // immediate fetch
+                fetchAndDisplayQuota().catch(() => {});
+
+                // update UI immediately to show running state
+                try { updateQuotaStatusUI(); } catch (e) {}
+
+                // use recursive setTimeout so we can change interval dynamically
+                _hhb_quota_poll_timer = setTimeout(async function pollTick(){
+                    try {
+                        await fetchAndDisplayQuota().catch(()=>{});
+                    } finally {
+                        // schedule next tick using current interval (may have changed due to backoff)
+                        _hhb_quota_poll_timer = setTimeout(pollTick, _hhb_current_poll_interval);
+                    }
+                }, _hhb_current_poll_interval);
+
+                console.debug && console.debug('Quota polling started (with backoff)');
+            } catch (e) { console.warn('startQuotaPolling failed', e); }
+        }
+
+        function stopQuotaPolling() {
+            try {
+                if (_hhb_quota_poll_timer) {
+                    clearTimeout(_hhb_quota_poll_timer);
+                    _hhb_quota_poll_timer = null;
+                    // reset backoff state
+                    _hhb_quota_failure_count = 0;
+                    _hhb_current_poll_interval = QUOTA_POLL_INTERVAL_MS;
+                    console.debug && console.debug('Quota polling stopped');
+                    // reflect stopped state in UI
+                    try {
+                        const ind = document.getElementById('quota-poll-indicator');
+                        const tip = document.getElementById('quota-poll-tooltip');
+                        if (ind) { ind.style.background = '#9CA3AF'; ind.style.boxShadow = 'none'; }
+                        if (tip) { tip.textContent = 'Polling: gestoppt'; tip.title = 'Polling ist gestoppt'; }
+                    } catch (e) {}
+                }
+            } catch (e) { console.warn('stopQuotaPolling failed', e); }
+        }
+
+        // Start polling after initial load if authenticated
+        try {
+            if (isUserAuthenticated()) startQuotaPolling();
+            // Also stop polling when user logs out (listen for storage changes)
+            window.addEventListener('storage', (ev) => {
+                if (ev.key === 'hhb_api_token' || ev.key === 'apiToken' || ev.key === 'api_token') {
+                    if (!isUserAuthenticated()) stopQuotaPolling(); else startQuotaPolling();
+                }
+            });
+        } catch (e) { console.warn('init polling failed', e); }
+
 
         // ==================== PROJECT LIBRARY ====================
         
@@ -3145,6 +3395,12 @@
                 pkg_feat_short: 'Perfekt für Kurzgeschichten', pkg_feat_novella: 'Perfekt für Novellen', pkg_feat_novel: 'Perfekt für Romane', pkg_feat_series: 'Perfekt für Serien/Verlage',
                 pkg_feat_all_apis: 'Alle 4 APIs verfügbar', pkg_feat_premium: 'Premium Support', pkg_feat_priority: 'Priority Support', pkg_feat_vip: 'VIP Support 24/7',
                 pkg_feat_validity: '365 Tage gültig',
+                // Payment / errors
+                error_payment_required_title: 'Zahlung erforderlich',
+                error_payment_required_message: 'Dein Guthaben reicht nicht aus. Bitte kaufe zusätzliche Credits, um fortzufahren.',
+                error_payment_required_cta: 'Credits kaufen',
+                button_buy_credits: 'Credits kaufen',
+                btn_close: 'Schließen',
                 btn_buy_now: 'Jetzt kaufen',
                 shop_footer: '🔒 Sichere Zahlung via Stripe • ⏰ Credits verfallen nach 365 Tagen',
                 shop_tip: '💡 Tipp: Je größer das Paket, desto mehr sparst du!',
@@ -3329,6 +3585,12 @@ Person B: Ich auch. Das wird großartig!`
                 pkg_feat_short: 'Perfect for Short Stories', pkg_feat_novella: 'Perfect for Novellas', pkg_feat_novel: 'Perfect for Novels', pkg_feat_series: 'Perfect for Series/Publishers',
                 pkg_feat_all_apis: 'All 4 APIs Available', pkg_feat_premium: 'Premium Support', pkg_feat_priority: 'Priority Support', pkg_feat_vip: 'VIP Support 24/7',
                 pkg_feat_validity: '365 Days Valid',
+                // Payment / errors
+                error_payment_required_title: 'Payment required',
+                error_payment_required_message: 'Your credits are insufficient. Please purchase additional credits to continue.',
+                error_payment_required_cta: 'Buy credits',
+                button_buy_credits: 'Buy credits',
+                btn_close: 'Close',
                 btn_buy_now: 'Buy Now',
                 shop_footer: '🔒 Secure Payment via Stripe • ⏰ Credits expire after 365 days',
                 shop_tip: '💡 Tip: The bigger the package, the more you save!',
@@ -4132,6 +4394,124 @@ Persona B: Yo también. ¡Esto va a ser genial!`
         const OPENAI_VOICES = ['nova','onyx','echo','shimmer','fable','alloy'];
         const POLLY_VOICES = ['Hans','Marlene','Vicki','Daniel','Hannah'];
         const ELEVENLABS_VOICE_MAP = {'Adam':'pNInz6obpgDQGcFUPNUG','Bella':'EXAVITQu4vr4xnSDxMaL','Arnold':'21m00Tcm4oz871Tymokv','Rachel':'ErXwBdymOqszjKVvANUN'};
+        // Pricing tier constants (finalized start prices)
+        // Basis packages provided by product team:
+        // 10.000 Zeichen => $3.99
+        // 30.000 Zeichen => $11.77
+        // 100.000 Zeichen => $38.00
+        const PRICE_TIERS = {
+            basis: [
+                { chars: 10000, price: 3.99 },
+                { chars: 30000, price: 11.77 },
+                { chars:100000, price: 38.00 }
+            ],
+            // Premium packages (ElevenLabs)
+            premium: [
+                { chars: 10000, price: 5.99 },
+                { chars: 30000, price: 15.99 },
+                { chars:100000, price: 44.99 }
+            ]
+        };
+
+        // Provider -> default tier mapping. Adjust as business rules evolve.
+        const PROVIDER_TIER_MAP = {
+            openai: 'basis',
+            gemini: 'basis',
+            elevenlabs: 'premium',
+            polly: 'basis'
+        };
+
+        function formatUSD(n) { return '$' + Number(n).toFixed(2); }
+
+        // Calculate cost by filling packages (greedy largest-first) and charging remainder pro-rata
+        function calculatePackageCost(charCount, packages) {
+            try {
+                const target = Math.max(0, Math.ceil(Number(charCount) || 0));
+                if (!packages || packages.length === 0) return 0;
+                // normalize packages into map by size
+                const packMap = {};
+                const sizes = [];
+                packages.forEach(p => { packMap[p.chars] = p.price; sizes.push(p.chars); });
+                sizes.sort((a,b)=>b-a); // descending
+
+                // If sizes are standard (100k,30k,10k) use bounded enumeration to find minimal cost
+                const large = sizes[0];
+                const mid = sizes[1] || sizes[0];
+                const small = sizes[sizes.length-1];
+
+                const maxLarge = Math.ceil(target / large);
+                let best = Number.POSITIVE_INFINITY;
+
+                for (let L = 0; L <= maxLarge; L++) {
+                    const remAfterLarge = target - L * large;
+                    // if already covered
+                    if (remAfterLarge <= 0) {
+                        const cost = L * (packMap[large] || 0);
+                        if (cost < best) best = cost;
+                        continue;
+                    }
+                    const maxMid = Math.ceil(remAfterLarge / mid);
+                    for (let M = 0; M <= maxMid; M++) {
+                        const remAfterMid = remAfterLarge - M * mid;
+                        let S = 0;
+                        if (remAfterMid > 0) {
+                            S = Math.ceil(remAfterMid / small);
+                        }
+                        const cost = (L * (packMap[large] || 0)) + (M * (packMap[mid] || 0)) + (S * (packMap[small] || 0));
+                        if (cost < best) best = cost;
+                    }
+                }
+
+                if (!isFinite(best)) return 0;
+                return Number(best.toFixed(6));
+            } catch (e) { console.warn('calculatePackageCost failed', e); return 0; }
+        }
+
+        // Update pricing UI for a provider (e.g. 'openai')
+        function updatePricingForProvider(provider) {
+            try {
+                const prefix = provider.toLowerCase();
+                const cell10k = document.getElementById(`price-${prefix}-10k`);
+                const cell100k = document.getElementById(`price-${prefix}-100k`);
+                const cell300k = document.getElementById(`price-${prefix}-300k`);
+
+                // Basis providers use defined packages
+                if (['openai','gemini','polly'].includes(prefix)) {
+                    const packs = PRICE_TIERS.basis;
+                    // display direct package prices where available
+                    if (cell10k && packs.find(p=>p.chars===10000)) cell10k.textContent = formatUSD(packs.find(p=>p.chars===10000).price);
+                    else if (cell10k) cell10k.textContent = formatUSD(packs[0].price);
+                    if (cell100k && packs.find(p=>p.chars===100000)) cell100k.textContent = formatUSD(packs.find(p=>p.chars===100000).price);
+                    else if (cell100k) {
+                        // if 100k package not explicitly provided, approximate using largest defined pack
+                        const largest = packs.slice().sort((a,b)=>b.chars-a.chars)[0];
+                        cell100k.textContent = formatUSD((largest.price / largest.chars) * 100000);
+                    }
+                    if (cell300k) {
+                        const price100k = packs.find(p=>p.chars===100000)?.price || (packs.slice().sort((a,b)=>b.chars-a.chars)[0].price * (100000 / packs.slice().sort((a,b)=>b.chars-a.chars)[0].chars));
+                        cell300k.textContent = formatUSD(price100k * 3);
+                    }
+                    return;
+                }
+
+                // ElevenLabs (premium): show premium package prices
+                if (prefix === 'elevenlabs') {
+                    const packs = PRICE_TIERS.premium;
+                    if (cell10k) cell10k.textContent = formatUSD(packs.find(p=>p.chars===10000)?.price ?? packs[0].price);
+                    if (cell100k) cell100k.textContent = formatUSD(packs.find(p=>p.chars===100000)?.price ?? (packs.find(p=>p.chars===30000)?.price * (100000/30000) ?? packs[0].price * 10));
+                    if (cell300k) {
+                        const price100k = packs.find(p=>p.chars===100000)?.price ?? (packs.find(p=>p.chars===30000)?.price * (100000/30000) ?? packs[0].price * 10);
+                        cell300k.textContent = formatUSD(price100k * 3);
+                    }
+                    return;
+                }
+
+                // Fallback: use basis
+                if (cell10k) cell10k.textContent = formatUSD(PRICE_TIERS.basis[0].price);
+                if (cell100k) cell100k.textContent = formatUSD(PRICE_TIERS.basis[2]?.price ?? (PRICE_TIERS.basis[0].price * 10));
+                if (cell300k) cell300k.textContent = formatUSD((PRICE_TIERS.basis[2]?.price ?? (PRICE_TIERS.basis[0].price * 10)) * 3);
+            } catch (e) { console.warn('updatePricingForProvider failed', e); }
+        }
         let activeTemplate = null; // Speichert das aktive Template für Re-Translation
         let activePreviewAudio = null;
         let audioContext, analyser, sourceNode, dataArray, animationFrameId;
@@ -4237,6 +4617,70 @@ Persona B: Yo también. ¡Esto va a ser genial!`
             }
         }
         
+        // Ensure pricing UI updates when API selection changes
+        try {
+            if (apiSelect) {
+                apiSelect.addEventListener('change', (e) => {
+                    const val = e.target.value || e.target.dataset?.value || apiSelect.value;
+                    try { updatePricingForProvider(val); } catch (err) { console.warn(err); }
+                });
+                // initial render
+                try { updatePricingForProvider(apiSelect.value || apiChoice); } catch(e) {}
+            }
+        } catch (e) { console.warn('pricing init failed', e); }
+
+        // --- Live Cost Estimator ---
+        function calculateCost(charCount, provider) {
+            try {
+                const p = (provider || '').toLowerCase();
+                // Basis providers use package-based pricing
+                if (['openai','gemini','polly'].includes(p)) {
+                    return calculatePackageCost(charCount, PRICE_TIERS.basis);
+                }
+                // ElevenLabs (premium): use package-based premium pricing
+                if (p === 'elevenlabs') {
+                    return calculatePackageCost(charCount, PRICE_TIERS.premium);
+                }
+                // Fallback: use basis package pro-rata
+                return calculatePackageCost(charCount, PRICE_TIERS.basis);
+            } catch (e) { console.warn('calculateCost failed', e); return 0; }
+        }
+
+        function updateLiveCosts(charCount) {
+            try {
+                const providers = ['openai','gemini','elevenlabs','polly'];
+                providers.forEach(p => {
+                    const el = document.getElementById(`cost-${p}`);
+                    if (el) {
+                        const c = calculateCost(charCount, p);
+                        el.textContent = formatUSD(c);
+                    }
+                });
+                // update generic stats char count display
+                try { if (typeof statsCharCount !== 'undefined' && statsCharCount) statsCharCount.textContent = String(charCount); } catch(e) {}
+            } catch (e) { console.warn('updateLiveCosts failed', e); }
+        }
+
+        function updateCharAndCosts() {
+            try {
+                const text = (bookText && bookText.value) ? bookText.value : '';
+                const count = text.length;
+                updateLiveCosts(count);
+            } catch (e) { console.warn('updateCharAndCosts failed', e); }
+        }
+
+        // wire up textarea and provider changes
+        try {
+            if (bookText) {
+                bookText.addEventListener('input', () => { updateCharAndCosts(); });
+            }
+            if (apiSelect) {
+                apiSelect.addEventListener('change', () => { updateCharAndCosts(); });
+            }
+            // initial run
+            try { updateCharAndCosts(); } catch(e) {}
+        } catch (e) { console.warn('live cost estimator init failed', e); }
+
         function drawEqualizer() {
             animationFrameId = requestAnimationFrame(drawEqualizer);
             analyser.getByteFrequencyData(dataArray);
@@ -5957,15 +6401,53 @@ Persona B: Yo también. ¡Esto va a ser genial!`
         // New: call the HHB Worker per-segment. The worker will deduct/refund per request.
         async function fetchUserBalances() {
             try {
-                const token = localStorage.getItem('apiToken');
+                // Support multiple token keys for backwards-compatibility
+                const token = localStorage.getItem('hhb_api_token') || localStorage.getItem('apiToken') || localStorage.getItem('api_token');
                 const headers = { 'Content-Type': 'application/json' };
                 if (token) headers['Authorization'] = `Bearer ${token}`;
-                const resp = await fetch(window.hhbApiUrl('/api/db/user'), { method: 'GET', headers });
+
+                // Prefer the standardized auth validation endpoint
+                let url = '/api/auth/validate';
+                try {
+                    if (typeof window !== 'undefined' && typeof window.hhbApiUrl === 'function') url = window.hhbApiUrl('/api/auth/validate');
+                    else if (typeof API_BASE !== 'undefined') url = API_BASE + '/auth/validate';
+                } catch (e) {}
+                const resp = await fetch(url, { method: 'GET', headers });
                 if (!resp.ok) return null;
                 const j = await resp.json();
-                if (!j.ok) return null;
+                if (!j || !j.ok) return null;
+
+                // Worker/server returns user object with kontingent_basis_tts / kontingent_premium_tts
                 return j.user || null;
-            } catch (e) { return null; }
+            } catch (e) {
+                console.warn('fetchUserBalances failed', e);
+                return null;
+            }
+        }
+
+        // Refresh UI credit display from server `/api/auth/validate`.
+        async function refreshUserQuota() {
+            try {
+                const b = await fetchUserBalances();
+                if (!b) return null;
+
+                // Normalize fields used in the app
+                const basis = Number(b.kontingent_basis_tts || b.kontingent_basis || 0);
+                const premium = Number(b.kontingent_premium_tts || b.kontingent_premium || 0);
+                const total = basis + premium;
+
+                // Update local cache + UI
+                userCredits = total;
+                localStorage.setItem('userCredits', String(userCredits));
+                updateCreditBalance();
+
+                // Optionally expose detailed balances
+                window.hhb_user_balances = { basis, premium, total };
+                return window.hhb_user_balances;
+            } catch (e) {
+                console.warn('refreshUserQuota failed', e);
+                return null;
+            }
         }
 
         function parseScriptSegments(scriptText) {
@@ -6476,6 +6958,19 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                         <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
                             <input type="checkbox" id="toggle-auto-speaker" class="sr-only peer" checked>
                             <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-300 dark:peer-focus:ring-rose-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-rose-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- Debug Toggle (Kontingent / Polling debug) -->
+                    <div class="flex items-start gap-4 p-4 border-2 border-gray-200 dark:border-slate-700 rounded-lg hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-900 dark:text-white mb-1">Debug-Ansicht (Kontingent)</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Zeige Debug-Overlay mit Poll-Intervall und Fehlerzähler</p>
+                            <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">🧰 Entwickler: Polling-Status</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" id="toggle-debug-quota" class="sr-only peer">
+                            <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-300 dark:peer-focus:ring-gray-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-gray-600"></div>
                         </label>
                     </div>
                 </div>
@@ -7088,9 +7583,21 @@ Persona B: Yo también. ¡Esto va a ser genial!`
 
         function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>\"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":"&#39;"}[c];}); }
 
-        marketplaceBtn && marketplaceBtn.addEventListener('click', ()=>{
+        marketplaceBtn && marketplaceBtn.addEventListener('click', async ()=>{
             marketplaceModal.classList.remove('hidden');
-            renderMarketplaceItems(SAMPLE_MARKETPLACE);
+            try{
+                // try loading remote marketplace; fallback to sample if nothing returned
+                await window.hhb_loadMarketplace();
+                // if remote didn't render items, show sample
+                if(marketplaceList && marketplaceList.children.length === 0){
+                    renderMarketplaceItems(SAMPLE_MARKETPLACE);
+                    showToast && showToast('Backend nicht erreichbar — lokale Beispiele geladen', 'info');
+                }
+            }catch(e){
+                console.warn('marketplace open failed', e);
+                renderMarketplaceItems(SAMPLE_MARKETPLACE);
+                showToast && showToast('Fehler beim Laden des Marktplatzes — lokale Beispiele geladen', 'info');
+            }
         });
         closeMarketplaceBtn && closeMarketplaceBtn.addEventListener('click', ()=> marketplaceModal.classList.add('hidden'));
         marketplaceRefresh && marketplaceRefresh.addEventListener('click', ()=> renderMarketplaceItems(SAMPLE_MARKETPLACE));
@@ -7103,22 +7610,112 @@ Persona B: Yo también. ¡Esto va a ser genial!`
             const BACKEND_BASE = (typeof window !== 'undefined' && window.location) ? (window.location.origin) : '';
             const API_BASE = BACKEND_BASE + '/api';
 
+            // small helper: generate a UUID v4 for idempotency keys
+            function generateUUID(){
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+
             // Override or define a global callProxyApi used by the app to request TTS
             window.callProxyApi = window.callProxyApi || async function(payload){
-                // payload: { api, script/text, ssml, speakers }
+                // payload: { api, script/text, ssml, speakers, referenceTxId }
                 const token = localStorage.getItem('hhb_api_token');
                 try{
+                    const idempotencyKey = payload && (payload.referenceTxId || payload.reference_tx_id) ? (payload.referenceTxId || payload.reference_tx_id) : generateUUID();
+                    const headers = {
+                        'Content-Type':'application/json',
+                        'X-Idempotency-Key': idempotencyKey
+                    };
+                    if(token){
+                        headers['Authorization'] = 'Bearer ' + token;
+                        // keep x-api-token for existing server middleware compatibility
+                        headers['x-api-token'] = token;
+                    }
+
                     const resp = await fetch(API_BASE + '/tts-proxy', {
                         method: 'POST',
-                        headers: Object.assign({'Content-Type':'application/json'}, token ? {'x-api-token': token} : {}),
+                        headers: headers,
                         body: JSON.stringify(payload)
                     });
+                    // Handle 402 Payment Required specifically
+                    if (resp.status === 402) {
+                        let j = null;
+                        try { j = await resp.json(); } catch (e) { j = null; }
+                        const fallback = translations && translations[currentLang] && translations[currentLang].error_payment_required_message ? translations[currentLang].error_payment_required_message : 'Payment required';
+                        const msg = (j && (j.message || j.error)) ? (j.message || j.error) : fallback;
+                        try { showPaymentRequiredModal(msg); } catch (e) { alert(msg); }
+                        return { ok:false, status:402, error: msg };
+                    }
+
+                    if (!resp.ok) {
+                        // try to extract error body
+                        let j = null;
+                        try { j = await resp.json(); } catch(e) { j = null; }
+                        const errMsg = (j && (j.message || j.error)) ? (j.message || j.error) : (await resp.text().catch(()=>String(resp.status)));
+                        return { ok:false, status: resp.status, error: errMsg };
+                    }
+
                     return await resp.json();
                 }catch(e){
                     console.error('callProxyApi error', e);
                     return { ok:false, error: String(e) };
                 }
             };
+
+            // --- SMOKE TEST INSTRUCTIONS ---
+            // To manually simulate a 402 'Payment Required' response for testing:
+            // 1) In the browser DevTools Console, temporarily stub `fetch` to return a 402:
+            //    window.__hhb_real_fetch = window.fetch;
+            //    window.fetch = async function(){ return new Response(JSON.stringify({ message: 'Simulierter 402: Guthaben aufgebraucht.' }), { status: 402, headers: { 'Content-Type': 'application/json' } }); };
+            // 2) Trigger the TTS action that calls `callProxyApi` (e.g. click 'In Audio umwandeln').
+            // 3) Verify: the localized payment modal appears (title, message, CTA) and further audio processing is halted.
+            // 4) Restore normal fetch after testing:
+            //    window.fetch = window.__hhb_real_fetch; delete window.__hhb_real_fetch;
+            // Notes:
+            // - This stub affects all `fetch` calls in the page; use only in dev environment or a disposable tab.
+            // - Adjust the returned JSON `message` to test different fallback/localized modal texts.
+            // - If your app uses other network mocking layers, prefer server-side test endpoints.
+            // --- END SMOKE TEST INSTRUCTIONS ---
+            // Show a payment-required modal with CTA to open the credit shop
+            function showPaymentRequiredModal(message) {
+                try {
+                    const t = (translations && translations[currentLang]) ? translations[currentLang] : {};
+                    let modal = document.getElementById('payment-required-modal');
+                    if (!modal) {
+                        modal = document.createElement('div');
+                        modal.id = 'payment-required-modal';
+                        const title = t.error_payment_required_title || 'Payment required';
+                        const defaultMsg = t.error_payment_required_message || 'Your credits are insufficient.';
+                        const cta = t.error_payment_required_cta || t.button_buy_credits || t.btn_buy_credits || 'Buy credits';
+                        const closeLabel = t.btn_close || 'Close';
+                        modal.innerHTML = `
+                            <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10010;padding:20px">
+                                <div style="max-width:720px;width:100%;background:white;border-radius:12px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.4);">
+                                    <h3 style="margin:0 0 8px 0;font-size:18px">${escapeHtml(title)}</h3>
+                                    <p style="margin:0 0 12px 0;color:#333;white-space:pre-wrap">${escapeHtml(String(message || defaultMsg))}</p>
+                                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+                                        <button id="payment-required-close" style="background:#efefef;border:none;padding:8px 12px;border-radius:6px;">${escapeHtml(closeLabel)}</button>
+                                        <button id="payment-required-cta" style="background:#881337;color:#fff;border:none;padding:8px 12px;border-radius:6px;">${escapeHtml(cta)}</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(modal);
+                        // wire buttons
+                        modal.querySelector('#payment-required-close').addEventListener('click', () => { modal.remove(); });
+                        modal.querySelector('#payment-required-cta').addEventListener('click', () => {
+                            try { creditShopModal && creditShopModal.classList.remove('hidden'); } catch(e) { /* fallback */ }
+                            try { modal.remove(); } catch(e) {}
+                        });
+                    } else {
+                        // update message and show
+                        modal.querySelector('p').textContent = message || (t.error_payment_required_message || 'Dein Guthaben reicht nicht aus.');
+                        modal.style.display = 'flex';
+                    }
+                } catch (e) { console.warn('showPaymentRequiredModal failed', e); try { alert(message); } catch{} }
+            }
 
             // Marketplace should fetch from backend when available
             window.hhb_loadMarketplace = async function(){
@@ -7132,12 +7729,19 @@ Persona B: Yo también. ¡Esto va a ser genial!`
             };
 
             // patch marketplace button to load remotely if backend exists
-            marketplaceBtn && marketplaceBtn.addEventListener('click', ()=>{
+            marketplaceBtn && marketplaceBtn.addEventListener('click', async ()=>{
                 marketplaceModal.classList.remove('hidden');
                 // set default source
                 const sel = document.getElementById('marketplace-source');
                 if(sel) sel.value = 'sample';
-                renderMarketplaceItems(SAMPLE_MARKETPLACE);
+                try{
+                    await window.hhb_loadMarketplace();
+                    if(marketplaceList && marketplaceList.children.length === 0){
+                        renderMarketplaceItems(SAMPLE_MARKETPLACE);
+                    }
+                }catch(e){
+                    renderMarketplaceItems(SAMPLE_MARKETPLACE);
+                }
             });
             // handle source change
             const mpSource = document.getElementById('marketplace-source');
@@ -7160,6 +7764,12 @@ Persona B: Yo también. ¡Esto va a ser genial!`
             }
     })();
     </script>
+</script>
+
+    <!-- Debug overlay (updated by JS). Hidden by default; enable by setting localStorage.hhb_debug_quota = '1' -->
+    <div id="quota-debug-overlay" style="display:none;position:fixed;right:12px;bottom:12px;z-index:9999;background:rgba(0,0,0,0.7);padding:8px 10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.4);font-family:monospace;font-size:12px;color:#fff;line-height:1.1;pointer-events:auto">
+        <!-- content populated by updateDebugOverlay() -->
+    </div>
 
 </body>
 </html>

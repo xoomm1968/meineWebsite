@@ -1,0 +1,9 @@
+node_modules/
+.env
+.wrangler/
+.DS_Store
+server/google-tts-key.json
+/.vscode/
+dist/
+*.log
+/.cache

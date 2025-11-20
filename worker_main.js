@@ -1,4 +1,22 @@
 // worker_main.js - single clean Cloudflare Worker implementation
+//
+// Idempotency / reference_tx_id
+// -----------------------------
+// This worker supports idempotent charge/deduction requests by accepting an
+// optional `referenceTxId` (or `reference_tx_id`) value in POST bodies sent to
+// `/api/charge`. If provided, the worker will attempt a best-effort check for
+// an existing transaction row with the same `reference_tx_id` and return that
+// existing transaction instead of creating a new one. This prevents duplicate
+// deductions when the client retries the same request.
+//
+// Notes:
+// - The worker will try to add the `reference_tx_id` column to the `transactions`
+//   table at runtime if it doesn't exist (best-effort, non-fatal).
+// - For production, prefer running the idempotency migration located at
+//   `migrations/20251120_add_reference_tx_id.sql` to make schema changes explicit.
+// - The server should forward client idempotency keys (Idempotency-Key or
+//   x-reference-tx-id) to the worker as `referenceTxId` in the /api/charge body.
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -249,16 +267,63 @@ export default {
         const headers = { 'Content-Type': 'application/json' };
         if (env.POLLY_FIREBASE_TOKEN) headers['x-worker-auth'] = env.POLLY_FIREBASE_TOKEN;
         // Pass segments and merge flag to Firebase function
-        const resp = await fetch(env.POLLY_FIREBASE_URL, { method: 'POST', headers, body: JSON.stringify({ segments, merge: merge }) });
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => '');
-          return jsonResponse({ ok: false, error: 'Firebase proxy error', details: text }, 500);
+        let resp;
+        try {
+          resp = await fetch(env.POLLY_FIREBASE_URL, { method: 'POST', headers, body: JSON.stringify({ segments, merge: merge }) });
+        } catch (fetchErr) {
+          console.error('Merge handler: fetch to POLLY_FIREBASE_URL failed', fetchErr && fetchErr.stack ? fetchErr.stack : fetchErr);
+          await refundKontingent(env, user_id, 0, 'basis');
+          return jsonResponse({ ok: false, error: 'Firebase fetch failed', details: fetchErr && fetchErr.message ? fetchErr.message : String(fetchErr) }, 500);
         }
-        const arrayBuffer = await resp.arrayBuffer();
-        return new Response(arrayBuffer, { status: 200, headers: { 'Content-Type': 'audio/mpeg', ...corsHeaders } });
+        if (!resp.ok) {
+          let text = '';
+          try { text = await resp.text(); } catch (tErr) { text = `failed to read body: ${tErr && tErr.message ? tErr.message : String(tErr)}`; }
+          console.error('Merge handler: Firebase proxy returned non-ok', { status: resp.status, bodySnippet: text.slice ? text.slice(0,2000) : String(text) });
+          return jsonResponse({ ok: false, error: 'Firebase proxy error', details: { status: resp.status, body: text } }, 500);
+        }
+        try {
+          const arrayBuffer = await resp.arrayBuffer();
+          return new Response(arrayBuffer, { status: 200, headers: { 'Content-Type': 'audio/mpeg', ...corsHeaders } });
+        } catch (bufferErr) {
+          console.error('Merge handler: failed to read arrayBuffer from firebase response', bufferErr && bufferErr.stack ? bufferErr.stack : bufferErr);
+          return jsonResponse({ ok: false, error: 'Failed to read audio response', details: bufferErr && bufferErr.message ? bufferErr.message : String(bufferErr) }, 500);
+        }
       } catch (err) {
+        console.error('Merge handler: unexpected error', err && err.stack ? err.stack : err);
         return jsonResponse({ ok: false, error: 'Proxy merge failed', details: err && err.message ? err.message : String(err) }, 500);
       }
+    }
+
+    // Charge endpoint: accept POST { userId, charCount, isPremium }
+    if (pathname === '/api/charge' && request.method === 'POST') {
+      try {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.userId || body.user_id || body.id || null;
+        const charCount = Number(body.charCount || body.chars || body.amount || 0);
+        const isPremium = !!body.isPremium;
+        const referenceTxId = body.referenceTxId || body.reference_tx_id || null;
+        if (!userId || !charCount) return jsonResponse({ ok: false, error: 'missing parameters' }, 400);
+        const type = isPremium ? 'premium' : 'basis';
+        const amount = Math.max(0, Math.floor(charCount));
+        const debit = await checkAndDeductKontingent(env, userId, amount, type, referenceTxId);
+        if (debit && debit.ok) return jsonResponse({ ok: true, remaining: undefined, deductionId: debit.deductionId, existing: !!debit.existing });
+        if (debit && debit.error && debit.error.toLowerCase && debit.error.toLowerCase().includes('insufficient')) return jsonResponse({ ok: false, reason: 'insufficient_credits', details: debit }, 402);
+        return jsonResponse({ ok: false, reason: 'charge_failed', details: debit }, 500);
+      } catch (e) {
+        return jsonResponse({ ok: false, error: String(e) }, 500);
+      }
+    }
+
+    // Auth validation endpoint (test only)
+    if (pathname === '/api/auth/validate' && request.method === 'GET'){
+      const auth = request.headers.get('Authorization') || '';
+      let token = null;
+      if (auth.toLowerCase().startsWith('bearer ')) token = auth.slice(7).trim();
+      if (!token) token = url.searchParams.get('token') || null;
+      if (!token) return jsonResponse({ ok:false, error: 'missing token' }, 400);
+      const user = await getUserIdByToken(token, env);
+      if (!user) return jsonResponse({ ok:false, error: 'invalid token' }, 401);
+      return jsonResponse({ ok:true, user });
     }
 
     return new Response('Not found', { status: 404, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } });
@@ -267,10 +332,59 @@ export default {
 
 async function getUserId(request, env) {
   const auth = request.headers.get('Authorization') || request.headers.get('authorization') || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  const token = auth.slice(7).trim(); if (!token) return null;
-  const row = await env.DB.prepare('SELECT id FROM users WHERE api_token = ? LIMIT 1').bind(token).first();
-  return row && row.id ? row.id : null;
+  // Debug: log presence of Authorization header (mask token for safety)
+  if (!auth || !auth.startsWith('Bearer ')) {
+    console.log('getUserId: no Bearer auth header');
+    return null;
+  }
+  const token = auth.slice(7).trim();
+  if (!token) {
+    console.log('getUserId: bearer token empty after trim');
+    return null;
+  }
+  try {
+    const mask = (t) => (typeof t === 'string' && t.length > 8) ? `${t.slice(0,3)}...${t.slice(-3)}` : '***';
+    console.log('getUserId: received Bearer token (masked):', mask(token));
+    const row = await env.DB.prepare('SELECT id FROM users WHERE api_token = ? LIMIT 1').bind(token).first();
+    if (row && row.id) {
+      console.log('getUserId: token matched user id=', row.id);
+      return row.id;
+    }
+    console.log('getUserId: token not found in users table');
+    return null;
+  } catch (e) {
+    console.error('getUserId: DB query failed', e && e.message ? e.message : String(e));
+    return null;
+  }
+}
+
+// Validate a token against the `users` table and return normalized user info.
+// Returns null when token invalid. Used by `/api/auth/validate`.
+async function getUserIdByToken(token, env){
+  if(!token) return null;
+  try{
+    // detect token column presence
+    let hasTokenCol = false;
+    try{
+      const cols = await env.DB.prepare("PRAGMA table_info(users)").all();
+      if(cols && cols.results){ hasTokenCol = cols.results.some(c => c.name === 'token'); }
+    }catch(e){ /* ignore */ }
+
+    const selectCols = ['id','api_token','kontingent_basis_tts','quota','quota_used','quota_reset_at'].join(',');
+    const whereClause = hasTokenCol ? '(token = ? OR api_token = ?)' : '(api_token = ?)';
+    const sql = `SELECT ${selectCols} FROM users WHERE ${whereClause} LIMIT 1`;
+    const bindParams = hasTokenCol ? [token, token] : [token];
+    const resp = await env.DB.prepare(sql).bind(...bindParams).all();
+    const row = (resp && resp.results && resp.results[0]) ? resp.results[0] : null;
+    if(!row) return null;
+    if((row.quota === null || row.quota === undefined) && row.kontingent_basis_tts !== undefined){ row.quota = row.kontingent_basis_tts; }
+
+    if(row.quota_reset_at){ const now = new Date().toISOString(); if(row.quota_reset_at <= now && (row.quota_used || 0) > 0){
+      try{ await env.DB.prepare(`UPDATE users SET quota_used = 0 WHERE id = ?`).bind(row.id).run(); row.quota_used = 0; }catch(e){}
+    }}
+
+    return { id: row.id, quota: row.quota || null, quota_used: row.quota_used || 0, quota_reset_at: row.quota_reset_at || null };
+  }catch(err){ return null; }
 }
 
 async function deductCredits(env, user_id, amount) {
@@ -288,20 +402,55 @@ async function deductCredits(env, user_id, amount) {
     const deductionId = row && row.id ? row.id : null;
     return { ok: true, deductionId };
   } catch (err) { return { ok: false, error: err && err.message ? err.message : String(err) }; }
+  
 }
 
 // Deduct from user's kontingent fields depending on type ('basis'|'premium')
 async function checkAndDeductKontingent(env, user_id, amount, type = 'basis') {
   if (amount <= 0) return { ok: true };
+  // support optional idempotency reference
+  let referenceTxId = null;
+  if (arguments.length >= 5) referenceTxId = arguments[4] || null;
   try {
     const field = (String(type).toLowerCase() === 'premium') ? 'kontingent_premium_tts' : 'kontingent_basis_tts';
+    // ensure reference column present (best-effort)
+    try{ await ensureReferenceTxColumn(env); }catch(e){}
+
+    // If a referenceTxId is provided, check for an existing transaction to make this idempotent
+    if(referenceTxId){
+      try{
+        const existing = await env.DB.prepare('SELECT id, user_id, type, amount, status, reference_tx_id FROM transactions WHERE reference_tx_id = ? LIMIT 1').bind(referenceTxId).first();
+        if(existing && existing.id){
+          return { ok:true, existing: true, deductionId: existing.id };
+        }
+      }catch(e){ /* ignore and continue */ }
+    }
     const row = await env.DB.prepare(`SELECT ${field} AS val FROM users WHERE id = ? LIMIT 1`).bind(user_id).first();
     const bal = row && row.val ? Number(row.val) : 0;
+    console.log(`checkAndDeductKontingent: user_id=${user_id} field=${field} current_value=${bal} needed=${amount}`);
     if (bal < amount) return { ok: false, error: 'Insufficient kontingent', balance: bal };
     await env.DB.prepare(`UPDATE users SET ${field} = COALESCE(${field},0) - ? WHERE id = ?`).bind(amount, user_id).run();
-    const insertSql = 'INSERT INTO transactions (user_id, type, amount, status) VALUES (?, ?, ?, "SUCCESS")';
+    try {
+      const afterRow = await env.DB.prepare(`SELECT ${field} AS val FROM users WHERE id = ? LIMIT 1`).bind(user_id).first();
+      const afterBal = afterRow && afterRow.val ? Number(afterRow.val) : 0;
+      console.log(`checkAndDeductKontingent: after deduction user_id=${user_id} ${field}=${afterBal}`);
+    } catch (innerErr) {
+      console.error('checkAndDeductKontingent: failed to read after-update balance', innerErr && innerErr.stack ? innerErr.stack : innerErr);
+    }
     const txType = (String(type).toLowerCase() === 'premium') ? 'DEDUCTION_PREMIUM' : 'DEDUCTION_BASIS';
-    await env.DB.prepare(insertSql).bind(user_id, txType, amount).run();
+    // Insert transaction; include reference_tx_id when available
+    try{
+      if(referenceTxId){
+        const insertSql = 'INSERT INTO transactions (user_id, type, amount, status, reference_tx_id) VALUES (?, ?, ?, "SUCCESS", ?)';
+        await env.DB.prepare(insertSql).bind(user_id, txType, amount, referenceTxId).run();
+      }else{
+        const insertSql = 'INSERT INTO transactions (user_id, type, amount, status) VALUES (?, ?, ?, "SUCCESS")';
+        await env.DB.prepare(insertSql).bind(user_id, txType, amount).run();
+      }
+    }catch(e){
+      // If insertion fails because column missing, try fallback insert without reference
+      try{ const insertSql = 'INSERT INTO transactions (user_id, type, amount, status) VALUES (?, ?, ?, "SUCCESS")'; await env.DB.prepare(insertSql).bind(user_id, txType, amount).run(); }catch(e2){}
+    }
     const row2 = await env.DB.prepare('SELECT id FROM transactions WHERE user_id = ? AND type = ? ORDER BY created_at DESC LIMIT 1').bind(user_id, txType).first();
     const deductionId = row2 && row2.id ? row2.id : null;
     return { ok: true, deductionId };
@@ -319,6 +468,20 @@ async function refundKontingent(env, user_id, amount, type = 'basis') {
     const refundId = row && row.id ? row.id : null;
     return { ok: true, refundId };
   } catch (err) { return { ok: false, error: err && err.message ? err.message : String(err) }; }
+}
+
+// Ensure the `reference_tx_id` column exists on the `transactions` table.
+// This is a best-effort helper; failures are non-fatal and will not block deductions.
+async function ensureReferenceTxColumn(env){
+  try{
+    const info = await env.DB.prepare("SELECT name FROM pragma_table_info('transactions') WHERE name = 'reference_tx_id'").all();
+    const exists = info && info.results && info.results[0];
+    if(!exists){
+      await env.DB.prepare("ALTER TABLE transactions ADD COLUMN reference_tx_id TEXT").run();
+    }
+  }catch(e){
+    // ignore errors — this helper is best-effort
+  }
 }
 
 async function creditRefund(env, user_id, amount) {
@@ -345,8 +508,13 @@ async function handleTtsRequest(request, env) {
   if (!text_to_speak || !voice_id) return jsonResponse({ ok: false, error: 'text and voiceId required' }, 400);
 
   const cost_in_credits = Math.max(1, Math.ceil(text_to_speak.length / 10));
+  console.log('handleTtsRequest: user_id=', user_id, 'provider=', provider, 'voice_id=', voice_id, 'voice_type=', voice_type, 'text_len=', text_to_speak.length, 'cost=', cost_in_credits);
   const deduct = await checkAndDeductKontingent(env, user_id, cost_in_credits, voice_type);
-  if (!deduct || !deduct.ok) return jsonResponse({ ok: false, error: deduct && deduct.error ? deduct.error : 'Insufficient credits', balance: deduct && deduct.balance ? deduct.balance : undefined }, 402);
+  console.log('handleTtsRequest: deduct result=', JSON.stringify(deduct));
+  if (!deduct || !deduct.ok) {
+    console.warn('handleTtsRequest: insufficient credits or deduction failed', deduct && deduct.error ? deduct.error : 'unknown');
+    return jsonResponse({ ok: false, error: deduct && deduct.error ? deduct.error : 'Insufficient credits', balance: deduct && deduct.balance ? deduct.balance : undefined }, 402);
+  }
 
   try {
     if (provider === 'polly' || provider === 'aws') {
