@@ -1,0 +1,12 @@
+HTTP/2 402 
+date: Sun, 16 Nov 2025 17:38:39 GMT
+content-type: application/json
+content-length: 86
+vary: accept-encoding
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=8pmWho7vLgXxbIgy%2Bd8hNn2B1%2BPieqD%2BLpAJnIR%2FqK8yxUDvlsYuISwrDgj44yq6BgOeVAGispkr7DwK0NGrRRqC8uRsNXaJBEQs9v2tQKfaGBVAEz49FFPTRRn2lKqZzd%2F9eQ%2BDNb4XpliRshvP%2BWlkiU%2BBAmBBsg%3D%3D"}]}
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+server: cloudflare
+cf-ray: 99f8c364da838732-WAW
+alt-svc: h3=":443"; ma=86400
+
+{"ok":false,"error":"D1_ERROR: no such column: created_at at offset 78: SQLITE_ERROR"}
