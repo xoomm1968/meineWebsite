@@ -1,3 +1,38 @@
+# Deployment notes — Finalized E2E auth & DB robustness
+
+Status
+- Worker deployed at: `https://hoerbuch-studio-pro.xoomm290268.workers.dev`
+- Latest worker build: version deployed during session (see `wrangler` output in CI logs).
+
+What changed
+- Token → userId resolution: `/api/charge` now resolves `userId` from `Authorization: Bearer <token>` when the request body omits `userId`.
+- `getUserIdByToken` made schema-robust: selects only columns present in the `users` table to avoid PRAGMA/SELECT failures across schema variants.
+- Transactions lookup resilient: falls back to `ORDER BY id DESC` when `created_at` is not present.
+- Idempotency supported: `/api/charge` accepts `reference_tx_id` (or `referenceTxId`) and will return existing transaction when present.
+- Temporary debug endpoints (used for tests) were added then removed; no debug endpoints remain in the deployed code.
+
+Operational notes
+- Database: Cloudflare D1 `db-elite-pro` (production). The worker binds as `env.DB`.
+- If you change the DB schema, prefer running explicit migrations rather than relying on runtime `PRAGMA` checks.
+- Secrets: verify that all required secrets exist in the Worker (`npx wrangler secret list --name hoerbuch-studio-pro`).
+
+Rollback / Backup
+- A safety backup branch was created and pushed: `backup/squash-20251121005839` (contains pre-history-rewrite state).
+
+Next recommended steps
+- Revoke the compromised Google service-account key if not already done (file `server/google-tts-key.json` contains a private key and should be removed from the repo/history and rotated).
+- Verify Stripe keys and webhook secrets are set and test a real checkout flow in a non-production Stripe test mode.
+- Consider running `wrangler d1` migrations to add `reference_tx_id` and `created_at` columns explicitly to `transactions`.
+
+How to redeploy locally
+1. Ensure `wrangler` is installed and you have appropriate account access.
+2. Run (from repo root):
+```
+npx wrangler deploy worker_main.js --name hoerbuch-studio-pro
+```
+
+Contact
+- For questions about these changes, review `worker_main.js` (charge logic) and the commit `fix(deploy): Finalize E2E auth flow and database query robustness`.
 # Deployment-Checkliste — Hörbuch Studio Pro
 
 Diese Datei fasst die erforderlichen Schritte zusammen, um den finalen Cloud-Worker (`worker_main.js`) in Produktion zu bringen, die Live-URL zu ermitteln und die Node.js-Proxy-Umgebung auf die korrekte Worker-URL zu konfigurieren.

@@ -1,6 +1,5 @@
 name = "hoerbuch-studio-pro"
 main = "worker_main.js"
-type = "javascript"
 compatibility_date = "2025-11-20"
 account_id = "6d061eaf4c273acc4d2ecaaed673b267"
 
@@ -18,22 +17,26 @@ binding = "DB"
 database_name = "db-elite-pro"
 database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6"
 
-## D1 binding for the production env (optional duplicate form for clarity)
-d1_databases = [
-  { binding = "DB", database_name = "db-elite-pro", database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6" }
-]
+## Note: single [[d1_databases]] table is sufficient; avoid duplicate
+## forms to prevent Wrangler warnings about unexpected fields.
 
 # Public runtime variables (used as fallback when `wrangler var put` is not available locally)
 [vars]
 PRICE_10_K_USD = "5.99"
 PRICE_30_K_USD = "15.99"
 PRICE_100_K_USD = "44.99"
+PRICE_BASE_10K_USD = "3.99"
+PRICE_BASE_30K_USD = "11.77"
+PRICE_BASE_100K_USD = "38.00"
 FULL_PROJECT_URL = "https://hoerbuch-studio-pro.workers.dev"
 
 [env.production.vars]
 PRICE_10_K_USD = "5.99"
 PRICE_30_K_USD = "15.99"
 PRICE_100_K_USD = "44.99"
+PRICE_BASE_10K_USD = "3.99"
+PRICE_BASE_30K_USD = "11.77"
+PRICE_BASE_100K_USD = "38.00"
 FULL_PROJECT_URL = "https://hoerbuch-studio-pro.workers.dev"
 
 

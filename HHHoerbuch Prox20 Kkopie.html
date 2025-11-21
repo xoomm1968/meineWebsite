@@ -10,6 +10,12 @@
     <script>
         // Defensive fallback: ensure window.hhbApiUrl exists even if other
         // build copies of the HTML define it in a different file variant.
+        // Set the production Worker base URL if not already configured.
+        // This ensures all calls to `window.hhbApiUrl(path)` target the
+        // deployed Cloudflare Worker in production.
+        if (!window.HHB_WORKER_BASE_URL || !window.HHB_WORKER_BASE_URL.length) {
+            window.HHB_WORKER_BASE_URL = 'https://hoerbuch-studio-pro.xoomm290268.workers.dev';
+        }
         if (typeof window.hhbApiUrl !== 'function') {
             window.hhbApiUrl = function(path) {
                 try {
