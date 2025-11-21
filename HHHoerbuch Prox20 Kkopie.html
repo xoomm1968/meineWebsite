@@ -6,6 +6,11 @@
     <title>Hörbuch Studio Pro</title>
     
     <!-- Tailwind CSS -->
+    <script>
+        // Use class-based dark mode so toggling `document.documentElement.classList` works.
+        // Must run before the Tailwind CDN script tag so the config is applied.
+        try { tailwind = tailwind || {}; tailwind.config = Object.assign(tailwind.config || {}, { darkMode: 'class' }); } catch (e) { /* ignore */ }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // Defensive fallback: ensure window.hhbApiUrl exists even if other
