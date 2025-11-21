@@ -1,0 +1,25 @@
+name = "hhb-d1-api"
+main = "workers/d1-api.js"
+compatibility_date = "2025-11-11"
+
+# --- Globale Einstellungen ---
+
+# Fülle hier später deine Cloudflare Account ID ein:
+# account_id = "DEINE_ACCOUNT_ID"
+
+[build]
+command = ""
+
+# --- Umgebungsspezifisch: Production ---
+
+[env.production]
+
+# Hier ist der D1-Block in der richtigen Umgebung (behebt den 10021 Fehler)
+[[d1_databases]]
+binding = "DB"
+database_name = "db-elite-pro"
+database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6"
+
+# WICHTIG: Deine Secrets (OpenAI, ElevenLabs, AWS) bleiben
+# im Cloudflare Dashboard gespeichert!
+

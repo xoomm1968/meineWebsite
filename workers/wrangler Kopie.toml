@@ -1,0 +1,20 @@
+name = "hhb-d1-api"
+main = "d1-api.js"  # <--- DIES IST DIE FEHLENDE EINSTELLUNG
+compatibility_date = "2025-11-11"
+
+# Fill in your Cloudflare account id and optionally publish_dir
+# account_id = "your-account-id"
+# zone_id = "your-zone-id"
+
+[env.production]
+[[d1_databases]]
+binding = "DB"
+database_name = "DB-Elite-Pro"
+database_id = "fdf8b02-08d3-4d78-a4c3-d6dc3f6fac6"
+
+# Worker secrets (set these via `wrangler secret put` or in the Cloudflare Dashboard)
+# secrets: ELEVENLABS_API_KEY
+
+[build]
+command = ""
+

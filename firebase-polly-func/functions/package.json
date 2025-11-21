@@ -1,0 +1,14 @@
+{
+  "name": "firebase-polly-func",
+  "description": "AWS Polly Proxy als Firebase Cloud Function",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1481.0",
+    "cors": "^2.8.5",
+    "firebase-functions": "^4.4.1",
+    "ffmpeg-static": "^5.1.0"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

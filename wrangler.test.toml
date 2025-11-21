@@ -1,0 +1,19 @@
+account_id = "6d061eaf4c273acc4d2ecaaed673b267"
+
+name = "hhb-d1-api-test"
+main = "worker_main.js"
+compatibility_date = "2025-11-11"
+
+[build]
+command = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "db-elite-pro"
+database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6"
+
+[env.production]
+# Use the same production DB binding
+d1_databases = [
+	{ binding = "DB", database_name = "db-elite-pro", database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6" }
+]

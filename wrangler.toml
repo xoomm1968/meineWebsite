@@ -1,0 +1,39 @@
+name = "hoerbuch-studio-pro"
+main = "worker_main.js"
+type = "javascript"
+compatibility_date = "2025-11-20"
+account_id = "6d061eaf4c273acc4d2ecaaed673b267"
+
+# Production environment settings
+[env.production]
+name = "hoerbuch-studio-pro"
+# route = "api.yourdomain.tld/*"  # optional: set when using a custom domain
+
+[build]
+command = ""
+
+## Top-level D1 binding (required for D1 usage in wrangler)
+[[d1_databases]]
+binding = "DB"
+database_name = "db-elite-pro"
+database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6"
+
+## D1 binding for the production env (optional duplicate form for clarity)
+d1_databases = [
+  { binding = "DB", database_name = "db-elite-pro", database_id = "fdf88b02-08d3-4d78-a6c3-d6dc36f4fac6" }
+]
+
+# Public runtime variables (used as fallback when `wrangler var put` is not available locally)
+[vars]
+PRICE_10_K_USD = "5.99"
+PRICE_30_K_USD = "15.99"
+PRICE_100_K_USD = "44.99"
+FULL_PROJECT_URL = "https://hoerbuch-studio-pro.workers.dev"
+
+[env.production.vars]
+PRICE_10_K_USD = "5.99"
+PRICE_30_K_USD = "15.99"
+PRICE_100_K_USD = "44.99"
+FULL_PROJECT_URL = "https://hoerbuch-studio-pro.workers.dev"
+
+
