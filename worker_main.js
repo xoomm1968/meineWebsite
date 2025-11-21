@@ -23,6 +23,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization'
 };
 
+// Premium consumption multiplier: premium voices consume more credits per character
+const PREMIUM_CONSUMPTION_FACTOR = 1.5;
+
 function jsonResponse(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
@@ -441,6 +444,16 @@ async function deductCredits(env, user_id, amount) {
 // Deduct from user's kontingent fields depending on type ('basis'|'premium')
 async function checkAndDeductKontingent(env, user_id, amount, type = 'basis') {
   if (amount <= 0) return { ok: true };
+  // Apply premium consumption factor when appropriate
+  let finalAmount = Number(amount) || 0;
+  const isPremium = String(type).toLowerCase() === 'premium';
+  if (isPremium) {
+    try {
+      finalAmount = Math.max(1, Math.ceil(finalAmount * PREMIUM_CONSUMPTION_FACTOR));
+    } catch (e) {
+      finalAmount = Math.max(1, Math.ceil(finalAmount * 1.5));
+    }
+  }
   // support optional idempotency reference
   let referenceTxId = null;
   if (arguments.length >= 5) referenceTxId = arguments[4] || null;
@@ -460,9 +473,9 @@ async function checkAndDeductKontingent(env, user_id, amount, type = 'basis') {
     }
     const row = await env.DB.prepare(`SELECT ${field} AS val FROM users WHERE id = ? LIMIT 1`).bind(user_id).first();
     const bal = row && row.val ? Number(row.val) : 0;
-    console.log(`checkAndDeductKontingent: user_id=${user_id} field=${field} current_value=${bal} needed=${amount}`);
-    if (bal < amount) return { ok: false, error: 'Insufficient kontingent', balance: bal };
-    await env.DB.prepare(`UPDATE users SET ${field} = COALESCE(${field},0) - ? WHERE id = ?`).bind(amount, user_id).run();
+    console.log(`checkAndDeductKontingent: user_id=${user_id} field=${field} current_value=${bal} needed=${finalAmount} (requested=${amount})`);
+    if (bal < finalAmount) return { ok: false, error: 'Insufficient kontingent', balance: bal };
+    await env.DB.prepare(`UPDATE users SET ${field} = COALESCE(${field},0) - ? WHERE id = ?`).bind(finalAmount, user_id).run();
     try {
       const afterRow = await env.DB.prepare(`SELECT ${field} AS val FROM users WHERE id = ? LIMIT 1`).bind(user_id).first();
       const afterBal = afterRow && afterRow.val ? Number(afterRow.val) : 0;
@@ -475,10 +488,10 @@ async function checkAndDeductKontingent(env, user_id, amount, type = 'basis') {
     try{
       if(referenceTxId){
         const insertSql = 'INSERT INTO transactions (user_id, type, amount, status, reference_tx_id) VALUES (?, ?, ?, "SUCCESS", ?)';
-        await env.DB.prepare(insertSql).bind(user_id, txType, amount, referenceTxId).run();
+        await env.DB.prepare(insertSql).bind(user_id, txType, finalAmount, referenceTxId).run();
       }else{
         const insertSql = 'INSERT INTO transactions (user_id, type, amount, status) VALUES (?, ?, ?, "SUCCESS")';
-        await env.DB.prepare(insertSql).bind(user_id, txType, amount).run();
+        await env.DB.prepare(insertSql).bind(user_id, txType, finalAmount).run();
       }
     }catch(e){
       // If insertion fails because column missing, try fallback insert without reference
