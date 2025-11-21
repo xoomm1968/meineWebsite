@@ -273,9 +273,7 @@
                     showProgress(i + 1, segmentsArr.length, `Generiere Segment ${i + 1}/${segmentsArr.length}...`);
                     const seg = segmentsArr[i];
                     const cfg = speakerMap[seg.name] || speakerConfigs[0];
-                    const token = localStorage.getItem('apiToken');
-                    const headers = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                    const headers = buildHeaders('application/json');
                     const payload = { provider: selectedApi, text: seg.text, voiceId: cfg.voice, voice_type: cfg.voice_type || 'basis' };
                     const resp = await fetch(window.hhbApiUrl('/api/tts/generate'), { method: 'POST', headers, body: JSON.stringify(payload) });
                     if (!resp.ok) {
@@ -4833,9 +4831,7 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                 // Call Worker TTS endpoint directly for preview
                 const mappedVoice = apiSelect.value === 'elevenlabs' ? ELEVENLABS_VOICE_MAP[voice] : voice;
                 const previewText = `preview: ${t.voice_preview_text}`;
-                const token = localStorage.getItem('apiToken');
-                const headers = { 'Content-Type': 'application/json' };
-                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const headers = buildHeaders('application/json');
                 const response = await fetch(window.hhbApiUrl('/api/tts/generate'), {
                     method: 'POST',
                     headers,
@@ -6492,9 +6488,8 @@ Persona B: Yo también. ¡Esto va a ser genial!`
         }
 
         async function synthesizeSegmentsViaWorker(segments, speakerConfigs, api) {
-            const token = localStorage.getItem('apiToken');
-            const headers = { 'Content-Type': 'application/json' };
-            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const token = getAuthToken();
+            const headers = buildHeaders('application/json');
             const audioBlobs = [];
             for (let i = 0; i < segments.length; i++) {
                 const seg = segments[i];
@@ -6615,9 +6610,7 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                         mergeUrl = (base ? base : '') + '/api/tts/merge';
                     }
 
-                    const token = localStorage.getItem('apiToken');
-                    const headers = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                    const headers = buildHeaders('application/json');
 
                     const resp = await fetch(mergeUrl, { method: 'POST', headers, body: JSON.stringify({ provider: selectedApi, segments: segmentsList, merge: true }) });
                     if (!resp.ok) {
@@ -7640,21 +7633,34 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                 });
             }
 
+            // Auth helpers: centralize token retrieval and header building so
+            // all fetch calls use the same logic and support multiple legacy keys.
+            function getAuthToken() {
+                try {
+                    return localStorage.getItem('hhb_api_token') || localStorage.getItem('apiToken') || localStorage.getItem('api_token') || '';
+                } catch (e) { return '';
+                }
+            }
+
+            function buildHeaders(contentType = 'application/json', extra = {}) {
+                const headers = {};
+                if (contentType) headers['Content-Type'] = contentType;
+                const token = getAuthToken();
+                if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                    // keep x-api-token for backward compatibility with older middleware
+                    headers['x-api-token'] = token;
+                }
+                return Object.assign(headers, extra || {});
+            }
+
             // Override or define a global callProxyApi used by the app to request TTS
             window.callProxyApi = window.callProxyApi || async function(payload){
                 // payload: { api, script/text, ssml, speakers, referenceTxId }
-                const token = localStorage.getItem('hhb_api_token');
+                const token = getAuthToken();
                 try{
                     const idempotencyKey = payload && (payload.referenceTxId || payload.reference_tx_id) ? (payload.referenceTxId || payload.reference_tx_id) : generateUUID();
-                    const headers = {
-                        'Content-Type':'application/json',
-                        'X-Idempotency-Key': idempotencyKey
-                    };
-                    if(token){
-                        headers['Authorization'] = 'Bearer ' + token;
-                        // keep x-api-token for existing server middleware compatibility
-                        headers['x-api-token'] = token;
-                    }
+                    const headers = buildHeaders('application/json', { 'X-Idempotency-Key': idempotencyKey });
 
                     const resp = await fetch(API_BASE + '/tts-proxy', {
                         method: 'POST',
