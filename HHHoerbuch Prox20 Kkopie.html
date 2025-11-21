@@ -1759,37 +1759,47 @@
         const themeToggleBtn = document.getElementById('theme-toggle');
         const darkIcon = document.getElementById('theme-toggle-dark-icon');
         const lightIcon = document.getElementById('theme-toggle-light-icon');
-        const htmlEl = document.documentElement;
 
         function updateThemeIcons(isDarkMode) {
+            if (!darkIcon || !lightIcon) return;
             darkIcon.classList.toggle('hidden', !isDarkMode);
             lightIcon.classList.toggle('hidden', isDarkMode);
         }
 
-        function applyTheme(theme) {
-            if (theme === 'dark') {
-                htmlEl.classList.add('dark');
-                updateThemeIcons(true);
-            } else {
-                htmlEl.classList.remove('dark');
-                updateThemeIcons(false);
+        function toggleDarkMode(isDark) {
+            try {
+                if (isDark) {
+                    // Custom body-level class (for any custom CSS relying on it)
+                    document.body.classList.add('dark-mode');
+                    // Keep Tailwind's `dark:` utilities working by adding `dark` to root
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.body.classList.remove('dark-mode');
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                }
+                updateThemeIcons(isDark);
+            } catch (e) {
+                console.warn('toggleDarkMode failed', e);
             }
         }
 
         const savedTheme = localStorage.getItem('theme');
-        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
         if (savedTheme) {
-            applyTheme(savedTheme);
+            toggleDarkMode(savedTheme === 'dark');
         } else {
-            applyTheme(systemPrefersDark ? 'dark' : 'light');
+            toggleDarkMode(Boolean(systemPrefersDark));
         }
 
-        themeToggleBtn.addEventListener('click', () => {
-            const isDarkMode = htmlEl.classList.toggle('dark');
-            localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-            updateThemeIcons(isDarkMode);
-        });
+        if (themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                const isCurrentlyDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark-mode');
+                toggleDarkMode(!isCurrentlyDark);
+            });
+        }
 
         // --- Collapsible Sections Logic ---
         const sections = document.querySelectorAll('.collapsible-section');
@@ -7613,7 +7623,8 @@ Persona B: Yo también. ¡Esto va a ser genial!`
         
             // --- Frontend Backend Wiring / Proxy defaults ---
             // Allow a developer to set an API token in localStorage under 'hhb_api_token' for protected endpoints
-            const BACKEND_BASE = (typeof window !== 'undefined' && window.location) ? (window.location.origin) : '';
+            // Use the live Cloudflare Worker as backend base so frontend calls target the deployed Worker.
+            const BACKEND_BASE = 'https://hoerbuch-studio-pro.xoomm290268.workers.dev';
             const API_BASE = BACKEND_BASE + '/api';
 
             // small helper: generate a UUID v4 for idempotency keys
