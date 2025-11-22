@@ -23,10 +23,8 @@
         }
         if (typeof window.hhbApiUrl !== 'function') {
             window.hhbApiUrl = function(path) {
-                try {
-                    const base = (window.HHB_WORKER_BASE_URL && window.HHB_WORKER_BASE_URL.length && !window.HHB_WORKER_BASE_URL.includes('your-worker'))
-                        ? window.HHB_WORKER_BASE_URL.replace(/\/+$/, '')
-                        : '';
+                try{
+                    const base = (window.HHB_WORKER_BASE_URL && window.HHB_WORKER_BASE_URL.length && !window.HHB_WORKER_BASE_URL.includes('your-worker')) ? window.HHB_WORKER_BASE_URL.replace(/\/+$/, '') : '';
                     return (base ? base : '') + path;
                 } catch (e) {
                     return path;
@@ -1193,6 +1191,9 @@
                 <div id="result-area" class="hidden space-y-4 pt-4 border-t dark:border-slate-700">
                      <h2 class="text-lg font-semibold text-slate-800 dark:text-gray-200" data-i18n="result_title">Dein Ergebnis:</h2>
                      <audio id="audio-player" controls class="w-full" style="color-scheme: dark;"></audio>
+                     <audio id="tts-audio-player" controls class="hidden" style="width:100%;">
+                         Dein Browser unterstützt das Audio-Element nicht.
+                     </audio>
                      <canvas id="equalizer" class="w-full h-24 mt-4"></canvas>
                      <div class="mt-3 flex items-center justify-between gap-3">
                         <label class="flex items-center gap-2 text-sm">
@@ -6418,17 +6419,18 @@ Persona B: Yo también. ¡Esto va a ser genial!`
         // New: call the HHB Worker per-segment. The worker will deduct/refund per request.
         async function fetchUserBalances() {
             try {
-                // Support multiple token keys for backwards-compatibility
+                // Read token (support legacy keys too)
                 const token = localStorage.getItem('hhb_api_token') || localStorage.getItem('apiToken') || localStorage.getItem('api_token');
-                const headers = { 'Content-Type': 'application/json' };
-                if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                // Prefer the standardized auth validation endpoint
-                let url = '/api/auth/validate';
-                try {
-                    if (typeof window !== 'undefined' && typeof window.hhbApiUrl === 'function') url = window.hhbApiUrl('/api/auth/validate');
-                    else if (typeof API_BASE !== 'undefined') url = API_BASE + '/auth/validate';
-                } catch (e) {}
+                // Build headers explicitly and ensure Authorization: Bearer <token> is present
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                // Hardcoded: use the live Cloudflare Worker auth validation endpoint
+                const url = 'https://hoerbuch-studio-pro.xoomm290268.workers.dev/api/auth/validate';
+
                 const resp = await fetch(url, { method: 'GET', headers });
                 if (!resp.ok) return null;
                 const j = await resp.json();
@@ -6623,41 +6625,88 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                     clearInterval(progressInterval);
                     showProgress(segments, segments, 'Audio wird zusammengesetzt...');
 
-                    const contentType = response.headers && typeof response.headers.get === 'function' ? (response.headers.get('Content-Type') || 'audio/mpeg') : 'audio/mpeg';
-                    // response may be a Response-like object or an object with blob property
-                    if (response instanceof Response) {
-                        audioBlob = await response.blob();
-                    } else if (response && response.blob) {
-                        audioBlob = await response.blob();
-                    } else if (response && response.data) {
-                        // fallback: server returned { data: 'data:<mime>;base64,<b64>' }
-                        try {
-                            const m = String(response.data).match(/^data:([^;]+);base64,(.*)$/);
-                            if (!m) throw new Error('no-data-url');
-                            const mime = m[1] || 'audio/mpeg';
-                            const b64 = m[2] || '';
-                            const bin = atob(b64);
-                            const len = bin.length;
-                            const u8 = new Uint8Array(len);
-                            for (let i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
-                            audioBlob = new Blob([u8.buffer], { type: mime });
-                        } catch (e) {
-                            throw new Error('Unbekanntes Antwortformat vom Proxy');
+                    // Wenn das Backend ein JSON-Objekt mit `dataUrl` zurückliefert,
+                    // nutze diese Data-URL direkt (z.B. `data:audio/mpeg;base64,...`).
+                    if (response && typeof response === 'object' && (response.dataUrl || response.data)) {
+                        // server might return { dataUrl: 'data:audio/..' } or { data: 'data:audio/..' }
+                        const dataUrl = response.dataUrl || response.data;
+                        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+                            // set player(s) and continue without converting blob
+                            try {
+                                audioPlayer.src = dataUrl;
+                                // also set a dedicated tts player if present
+                                const ttsEl = document.getElementById('tts-audio-player');
+                                if (ttsEl) {
+                                    try { ttsEl.src = dataUrl; ttsEl.style.display = ''; ttsEl.load(); ttsEl.play().catch(()=>{}); } catch(e){}
+                                }
+                                // set download link to the dataUrl as well
+                                downloadLink.href = dataUrl;
+                                // try to infer extension from mime
+                                const m = dataUrl.match(/^data:([^;]+);base64,/);
+                                let fileExtension = 'mp3';
+                                if (m) { const mime = m[1]; if (mime.includes('wav')) fileExtension = 'wav'; }
+                                downloadLink.download = `hoerbuch_${Date.now()}.${fileExtension}`;
+                                // mark that we already have playable audio
+                                audioBlob = null;
+                            } catch (e) {
+                                console.warn('Fehler beim Setzen der dataUrl als Player-Quelle', e);
+                                throw new Error('Fehler beim Abspielen der Antwort');
+                            }
+                        } else {
+                            // if data isn't a proper data-url, try to handle as base64 payload
+                            try {
+                                const m = String(dataUrl).match(/^data:([^;]+);base64,(.*)$/);
+                                if (!m) throw new Error('no-data-url');
+                                const mime = m[1] || 'audio/mpeg';
+                                const b64 = m[2] || '';
+                                const bin = atob(b64);
+                                const len = bin.length;
+                                const u8 = new Uint8Array(len);
+                                for (let i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
+                                audioBlob = new Blob([u8.buffer], { type: mime });
+                            } catch (e) {
+                                throw new Error('Unbekanntes Antwortformat vom Proxy');
+                            }
                         }
-                    } else if (response && response.ok === false && response.error) {
-                        throw new Error(response.error || 'Proxy error');
                     } else {
-                        throw new Error('Unbekannte Antwort vom Proxy');
+                        // response may be a Response-like object or an object with blob property
+                        const contentType = response && response.headers && typeof response.headers.get === 'function' ? (response.headers.get('Content-Type') || 'audio/mpeg') : 'audio/mpeg';
+                        if (response instanceof Response) {
+                            audioBlob = await response.blob();
+                        } else if (response && response.blob) {
+                            audioBlob = await response.blob();
+                        } else if (response && response.ok === false && response.error) {
+                            throw new Error(response.error || 'Proxy error');
+                        } else {
+                            throw new Error('Unbekannte Antwort vom Proxy');
+                        }
                     }
                 }
 
                 // After we have audioBlob, continue
                 let fileExtension = 'mp3';
                 try { const ct = (audioBlob && audioBlob.type) ? audioBlob.type : ''; if (ct.includes('wav') || selectedApi === 'gemini') fileExtension = 'wav'; } catch(e){}
-                const audioUrl = URL.createObjectURL(audioBlob);
-                audioPlayer.src = audioUrl;
-                downloadLink.href = audioUrl;
-                downloadLink.download = `hoerbuch_${Date.now()}.${fileExtension}`;
+
+                // Erstelle Blob-URL nur, wenn gültige Audiodaten vorliegen.
+                // audioBlob kann null sein, wenn bereits ein `data:`-URL gesetzt wurde.
+                if (audioBlob && typeof audioBlob.size === 'number' && audioBlob.size > 0) {
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    audioPlayer.src = audioUrl;
+                    downloadLink.href = audioUrl;
+                    downloadLink.download = `hoerbuch_${Date.now()}.${fileExtension}`;
+                } else {
+                    // Falls kein Blob vorhanden ist, prüfen wir, ob der Player
+                    // bereits eine Quelle hat (z.B. vorher gesetzte data: URL).
+                    const currentSrc = (audioPlayer && audioPlayer.src) ? audioPlayer.src : '';
+                    if (currentSrc && currentSrc.startsWith('data:')) {
+                        // Benutze existing data: URL als Download-Quelle
+                        downloadLink.href = currentSrc;
+                        downloadLink.download = `hoerbuch_${Date.now()}.${fileExtension}`;
+                    } else {
+                        // Keine gültigen Audiodaten erhalten — saubere Fehlermeldung
+                        throw new Error('Keine gültigen Audiodaten vom Proxy erhalten');
+                    }
+                }
                 
                 // ===== CREDITS ABZIEHEN =====
                 deductCredits(requiredCredits);
@@ -7542,8 +7591,7 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                     // otherwise treat as provider voice id -> call backend preview
                     try{
                         const provider = (document.getElementById('marketplace-source') && document.getElementById('marketplace-source').value) || 'elevenlabs';
-                        const token = localStorage.getItem('hhb_api_token');
-                        const headers = token ? {'x-api-token': token} : {};
+                        const headers = buildHeaders(null);
                         const q = new URLSearchParams({ provider, voiceId: id });
                         const r = await fetch(API_BASE + '/marketplace/preview?' + q.toString(), { headers });
                         const j = await r.json();
@@ -7748,8 +7796,7 @@ Persona B: Yo también. ¡Esto va a ser genial!`
             // Marketplace should fetch from backend when available
             window.hhb_loadMarketplace = async function(){
                 try{
-                    const token = localStorage.getItem('hhb_api_token');
-                    const headers = token ? {'x-api-token': token} : {};
+                    const headers = buildHeaders(null);
                     const r = await fetch(API_BASE + '/marketplace', { headers });
                     const j = await r.json();
                     if(j && j.items) renderMarketplaceItems(j.items);
@@ -7780,8 +7827,7 @@ Persona B: Yo también. ¡Esto va a ser genial!`
                     if(val === 'elevenlabs'){
                         // fetch from backend
                         try{
-                            const token = localStorage.getItem('hhb_api_token');
-                            const headers = token ? {'x-api-token': token} : {};
+                            const headers = buildHeaders(null);
                             const r = await fetch(API_BASE + '/marketplace/voices?provider=elevenlabs', { headers });
                             const j = await r.json();
                             if(j && j.items) renderMarketplaceItems(j.items);
